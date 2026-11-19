@@ -1,0 +1,213 @@
+spring:
+  application:
+    name: user-service
+
+  profiles:
+    active: dev
+
+  # Database Configuration
+  datasource:
+    url: jdbc:h2:file:${DB_FILE_PATH:./data/userdb};AUTO_SERVER=TRUE
+    username: ${DB_USERNAME:sa}
+    password: ${DB_PASSWORD:}
+    driver-class-name: org.h2.Driver
+    hikari:
+      # Connection Pool Configuration
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 20000
+      idle-timeout: 300000
+      max-lifetime: 1200000
+      pool-name: UserServiceHikariCP
+
+  # JPA Configuration
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: true
+        use_sql_comments: true
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+    open-in-view: false
+
+  # H2 console is a known RCE vector (CVE-2021-42392) when reachable - keep it off
+  h2:
+    console:
+      enabled: false
+
+  # Flyway Configuration
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+  # Jackson Configuration
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+      fail-on-empty-beans: false
+    deserialization:
+      fail-on-unknown-properties: false
+    default-property-inclusion: non_null
+
+# Server Configuration
+server:
+  port: 8083
+  servlet:
+    context-path: /
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain
+  error:
+    include-message: always
+    # Binding errors can repeat what the user typed (a password), so they are never shown.
+    include-binding-errors: never
+    include-stacktrace: never
+    include-exception: false
+
+# Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,loggers,env
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+    env:
+      # Values of properties (like the JWT secret) are never shown, even to an admin.
+      show-values: never
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+  tracing:
+    sampling:
+      # Every request gets a trace id (it is written into the logs and sent to the services that are called).
+      # Nothing is exported: there is no Zipkin or OTLP exporter in this service.
+      probability: 1.0
+
+# Logging Configuration
+# How the lines are written (JSON file, JSON on stdout outside dev, text in dev) is set in logback-spring.xml.
+# Only the levels are set here. SQL logging is only turned on in the dev profile, and never with the parameter
+# values (the BasicBinder logger stays at INFO), because they hold personal data and password hashes.
+logging:
+  level:
+    root: INFO
+    com.microservices: INFO
+    org.springframework.web: INFO
+    org.hibernate: INFO
+
+# OpenAPI/Swagger Configuration
+springdoc:
+  api-docs:
+    path: /api-docs
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    operations-sorter: method
+    tags-sorter: alpha
+    display-request-duration: true
+    doc-expansion: none
+  show-actuator: true
+
+# Application Specific Configuration
+application:
+  name: User Service
+  version: 1.0.0
+  description: User accounts and login (JWT) Microservice
+  api:
+    version: v1
+    base-path: /api/users
+
+# Security settings. The secret and the admin account come from environment variables.
+# Outside the dev profile the service refuses to start if they are missing (see StartupSecurityCheck).
+app:
+  # An email is personal data: set include-email to false to keep it out of the logs.
+  # A request slower than slow-request-ms is logged as a warning with slow=true.
+  logging:
+    include-email: true
+    slow-request-ms: 2000
+  security:
+    jwt:
+      # At least 32 bytes. The same value must be used by product-service and inventory-service.
+      secret: ${JWT_SECRET:}
+    admin:
+      # This account is created on start if no user has this email.
+      email: ${ADMIN_EMAIL:}
+      password: ${ADMIN_PASSWORD:}
+
+---
+# Development Profile
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  jpa:
+    # SQL is written by the logger org.hibernate.SQL (below), so it shows up in the log format with a trace id
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+logging:
+  level:
+    com.microservices: DEBUG
+    # SQL statements, without the parameter values
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: INFO
+
+# Local-only placeholders so a local run needs no set-up. They must never be used on AWS.
+app:
+  security:
+    jwt:
+      secret: ${JWT_SECRET:dev-only-placeholder-secret-do-not-use-in-aws-0123456789}
+    admin:
+      email: ${ADMIN_EMAIL:admin@example.com}
+      password: ${ADMIN_PASSWORD:admin12345}
+
+---
+# Production Profile
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  datasource:
+    url: ${DB_URL:jdbc:h2:file:/data/userdb;AUTO_SERVER=TRUE}
+    username: ${DB_USERNAME:sa}
+    password: ${DB_PASSWORD:}
+
+  jpa:
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+logging:
+  level:
+    com.microservices: INFO
+    org.springframework.web: WARN
+
+management:
+  endpoint:
+    health:
+      show-details: when-authorized

@@ -1,0 +1,218 @@
+spring:
+  application:
+    name: cart-service
+
+  profiles:
+    active: dev
+
+  # Database Configuration
+  datasource:
+    url: jdbc:h2:file:${DB_FILE_PATH:./data/cartdb};AUTO_SERVER=TRUE
+    username: ${DB_USERNAME:sa}
+    password: ${DB_PASSWORD:}
+    driver-class-name: org.h2.Driver
+    hikari:
+      # Connection Pool Configuration
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 20000
+      idle-timeout: 300000
+      max-lifetime: 1200000
+      pool-name: CartServiceHikariCP
+
+  # JPA Configuration
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: true
+        use_sql_comments: true
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+    open-in-view: false
+
+  # H2 console is a known RCE vector (CVE-2021-42392) when reachable - keep it off
+  h2:
+    console:
+      enabled: false
+
+  # Flyway Configuration
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+  # Jackson Configuration
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+      fail-on-empty-beans: false
+    deserialization:
+      fail-on-unknown-properties: false
+      # A quantity like 2.5 or 2.0 is refused instead of being cut to 2.
+      accept-float-as-int: false
+    mapper:
+      # A quantity sent as text ("5") is refused instead of being turned into a number.
+      allow-coercion-of-scalars: false
+    default-property-inclusion: non_null
+
+# Server Configuration
+server:
+  port: 8084
+  servlet:
+    context-path: /
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain
+  error:
+    include-message: always
+    include-binding-errors: never
+    include-stacktrace: never
+    include-exception: false
+
+# Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,loggers,env
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+    env:
+      # Values of properties (like the JWT secret) are never shown, even to an admin.
+      show-values: never
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+  tracing:
+    sampling:
+      # Every request gets a trace id (it is written into the logs and sent to product-service on every call).
+      # Nothing is exported: there is no Zipkin or OTLP exporter in this service.
+      probability: 1.0
+
+# Logging Configuration
+# How the lines are written (JSON file, JSON on stdout outside dev, text in dev) is set in logback-spring.xml.
+# Only the levels are set here. SQL logging is only turned on in the dev profile, and never with the parameter
+# values (the BasicBinder logger stays at INFO), because they hold personal data.
+logging:
+  level:
+    root: INFO
+    com.microservices: INFO
+    org.springframework.web: INFO
+    org.hibernate: INFO
+
+# OpenAPI/Swagger Configuration
+springdoc:
+  api-docs:
+    path: /api-docs
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    operations-sorter: method
+    tags-sorter: alpha
+    display-request-duration: true
+    doc-expansion: none
+  show-actuator: true
+
+# Application Specific Configuration
+application:
+  name: Cart Service
+  version: 1.0.0
+  description: Shopping cart Microservice
+  api:
+    version: v1
+    base-path: /api/cart
+
+# Security settings. user-service signs the login tokens, this service only checks them.
+# All services share one secret (environment variable JWT_SECRET, at least 32 bytes). Never commit a real secret.
+# Outside the dev profile the service refuses to start if it is missing or is the dev placeholder (see JwtStartupCheck).
+app:
+  # An email is personal data: set include-email to false to keep it out of the logs.
+  # A request slower than slow-request-ms is logged as a warning with slow=true.
+  logging:
+    include-email: true
+    slow-request-ms: 2000
+  security:
+    jwt:
+      secret: ${JWT_SECRET:}
+
+# product-service: the cart asks it for the name and price of every item (GET only, no login needed).
+# The time-outs are short, so a slow product-service gives a quick "please try again" answer.
+cart:
+  product-service:
+    url: ${PRODUCT_SERVICE_URL:http://localhost:8081}
+    connect-timeout-ms: 2000
+    read-timeout-ms: 5000
+
+---
+# Development Profile
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  jpa:
+    # SQL is written by the logger org.hibernate.SQL (below), so it shows up in the log format with a trace id
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+logging:
+  level:
+    com.microservices: DEBUG
+    # SQL statements, without the parameter values
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: INFO
+
+# Local-only placeholder so a local run needs no set-up. It must never be used on AWS.
+app:
+  security:
+    jwt:
+      secret: ${JWT_SECRET:dev-only-placeholder-secret-do-not-use-in-aws-0123456789}
+
+---
+# Production Profile
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  datasource:
+    url: ${DB_URL:jdbc:h2:file:/data/cartdb;AUTO_SERVER=TRUE}
+    username: ${DB_USERNAME:sa}
+    password: ${DB_PASSWORD:}
+
+  jpa:
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+logging:
+  level:
+    com.microservices: INFO
+    org.springframework.web: WARN
+
+management:
+  endpoint:
+    health:
+      show-details: when-authorized

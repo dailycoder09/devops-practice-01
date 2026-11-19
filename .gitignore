@@ -1,0 +1,33 @@
+# Safety net for the whole project. Each service folder also has its own .gitignore.
+
+# macOS and editors
+.DS_Store
+.idea/
+.vscode/
+*.iml
+*.swp
+*~
+
+# Secrets and local settings: never commit these
+.env
+.env.*
+*.pem
+*.key
+application-local.yml
+application-local.properties
+
+# Local run output (created when the apps run on this machine)
+logs/
+*.log
+data/
+*.db
+*.trace.db
+
+# Build output and installed dependencies
+target/
+node_modules/
+dist/
+*.jar
+
+# Tool folders that are not part of the project
+.remember/

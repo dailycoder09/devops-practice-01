@@ -1,0 +1,16 @@
+# Used by the tests that run with @ActiveProfiles("test").
+# Own in-memory database per Spring context, and test-only security values (never used outside the tests).
+spring:
+  datasource:
+    url: jdbc:h2:mem:userdb-${random.uuid};DB_CLOSE_DELAY=-1
+  jpa:
+    show-sql: false
+
+app:
+  security:
+    jwt:
+      secret: test-only-secret-for-user-service-tests-0123456789-abcdefghij
+    admin:
+      # Mixed case on purpose: the service must store it in lower case.
+      email: Test.Admin@Example.com
+      password: test-admin-password

@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logging of order-service.
+
+  What is written:
+    - Outside the dev profile the console (stdout, which containers and CloudWatch read) gets one JSON object per line.
+    - In the dev profile the console is readable text with the trace id and the user.
+    - In EVERY profile the same JSON lines also go to a rolling file: ${LOG_PATH:-logs}/order-service.json.log
+      (a new file every day or at 10 MB, 14 days kept, 500 MB at most).
+    - Both outputs are async (a queue of 1024 events that never discards one).
+
+  JSON fields: timestamp (ISO-8601, UTC), level, service, profile, logger (short), thread, message, stack_trace (one field),
+  every MDC key (traceId, spanId, userId, userEmail, userRole, clientIp) and every structured argument of a log call
+  (event, httpMethod, httpStatus, orderId, ...) as a top-level field. A message with quotes or line breaks is escaped,
+  so every line is valid JSON.
+
+  Never log passwords, tokens, the Authorization header, the JWT secret, request or response bodies or query strings.
+  The levels are the ones of the plan: ERROR needs a person, WARN is a handled problem or a security signal, INFO is
+  lifecycle, access and audit, DEBUG is developer detail. SQL is logged only in dev, and never with parameter values.
+-->
+<configuration>
+    <!-- Spring Boot defaults (conversion rules and quiet levels for noisy libraries) -->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <springProperty scope="context" name="SERVICE_NAME" source="spring.application.name" defaultValue="order-service"/>
+    <springProperty scope="context" name="SPRING_PROFILE" source="spring.profiles.active" defaultValue="default"/>
+    <property name="LOG_DIR" value="${LOG_PATH:-logs}"/>
+
+    <!-- ============================== console ============================== -->
+
+    <springProfile name="dev">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{HH:mm:ss.SSS} %-5level [%X{traceId:-}] [user=%X{userId:-} ip=%X{clientIp:-}] %logger{25} - %msg%n</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+    </springProfile>
+
+    <springProfile name="!dev">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <timeZone>UTC</timeZone>
+                <shortenedLoggerNameLength>25</shortenedLoggerNameLength>
+                <fieldNames>
+                    <timestamp>timestamp</timestamp>
+                    <version>[ignore]</version>
+                    <levelValue>[ignore]</levelValue>
+                    <logger>logger</logger>
+                    <thread>thread</thread>
+                    <stackTrace>stack_trace</stackTrace>
+                </fieldNames>
+                <customFields>{"service":"${SERVICE_NAME}","profile":"${SPRING_PROFILE}"}</customFields>
+                <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
+                    <maxDepthPerThrowable>30</maxDepthPerThrowable>
+                    <maxLength>8192</maxLength>
+                </throwableConverter>
+            </encoder>
+        </appender>
+    </springProfile>
+
+    <appender name="ASYNC_CONSOLE" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>1024</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <appender-ref ref="CONSOLE"/>
+    </appender>
+
+    <!-- ============================== rolling JSON file (every profile) ============================== -->
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/order-service.json.log</file>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <timeZone>UTC</timeZone>
+            <shortenedLoggerNameLength>25</shortenedLoggerNameLength>
+            <fieldNames>
+                <timestamp>timestamp</timestamp>
+                <version>[ignore]</version>
+                <levelValue>[ignore]</levelValue>
+                <logger>logger</logger>
+                <thread>thread</thread>
+                <stackTrace>stack_trace</stackTrace>
+            </fieldNames>
+            <customFields>{"service":"${SERVICE_NAME}","profile":"${SPRING_PROFILE}"}</customFields>
+            <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
+                <maxDepthPerThrowable>30</maxDepthPerThrowable>
+                <maxLength>8192</maxLength>
+            </throwableConverter>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/order-service.%d{yyyy-MM-dd}.%i.json.log</fileNamePattern>
+            <maxFileSize>10MB</maxFileSize>
+            <maxHistory>14</maxHistory>
+            <totalSizeCap>500MB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>1024</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <appender-ref ref="FILE"/>
+    </appender>
+
+    <!-- ============================== loggers ============================== -->
+
+    <!-- Our own code -->
+    <logger name="com.microservices" level="INFO"/>
+    <springProfile name="dev">
+        <logger name="com.microservices" level="DEBUG"/>
+    </springProfile>
+
+    <!-- Audit events (who did what). They have their own logger, so they can get their own level at runtime. -->
+    <logger name="audit" level="INFO" additivity="false">
+        <appender-ref ref="ASYNC_CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE"/>
+    </logger>
+
+    <!-- Spring and others -->
+    <logger name="org.springframework" level="INFO"/>
+    <logger name="org.springframework.web" level="INFO"/>
+    <logger name="org.springframework.security" level="INFO"/>
+    <logger name="org.springframework.boot.actuate" level="INFO"/>
+    <logger name="com.zaxxer.hikari" level="INFO"/>
+    <logger name="org.flywaydb" level="INFO"/>
+
+    <!-- Hibernate: the SQL text only in dev, and never the parameter values (BasicBinder stays at INFO) -->
+    <logger name="org.hibernate" level="INFO"/>
+    <logger name="org.hibernate.SQL" level="INFO"/>
+    <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="INFO"/>
+    <springProfile name="dev">
+        <logger name="org.hibernate.SQL" level="DEBUG"/>
+    </springProfile>
+
+    <root level="INFO">
+        <appender-ref ref="ASYNC_CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE"/>
+    </root>
+</configuration>

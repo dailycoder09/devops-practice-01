@@ -1,0 +1,219 @@
+spring:
+  application:
+    name: order-service
+
+  profiles:
+    active: dev
+
+  # Database Configuration
+  datasource:
+    url: jdbc:h2:file:${DB_FILE_PATH:./data/orderdb};AUTO_SERVER=TRUE
+    username: ${DB_USERNAME:sa}
+    password: ${DB_PASSWORD:}
+    driver-class-name: org.h2.Driver
+    hikari:
+      # Connection Pool Configuration
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 20000
+      idle-timeout: 300000
+      max-lifetime: 1200000
+      pool-name: OrderServiceHikariCP
+
+  # JPA Configuration
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: true
+        use_sql_comments: true
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+    open-in-view: false
+
+  # H2 console is a known RCE vector (CVE-2021-42392) when reachable - keep it off
+  h2:
+    console:
+      enabled: false
+
+  # Flyway Configuration
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+  # Jackson Configuration
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+      fail-on-empty-beans: false
+    deserialization:
+      fail-on-unknown-properties: false
+    default-property-inclusion: non_null
+
+# Server Configuration
+server:
+  port: 8085
+  servlet:
+    context-path: /
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain
+  error:
+    include-message: always
+    include-binding-errors: never
+    include-stacktrace: never
+    include-exception: false
+
+# Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,loggers,env
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+    env:
+      # Values of properties (like the JWT secret) are never shown, even to an admin.
+      show-values: never
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+  # Micrometer Tracing (Brave bridge): every request gets a traceId and spanId, which go into the log lines and into
+  # the headers of the calls to the other services. Nothing is exported (no Zipkin, no OTLP).
+  tracing:
+    sampling:
+      probability: 1.0
+
+# Logging Configuration
+# What is written, where and in which format is in logback-spring.xml (JSON lines, one logger "audit" for business
+# events). Only the LEVELS are set here. Tokens, passwords and the secret are never logged. SQL is logged only in the
+# dev profile (below), and never with its parameter values (BasicBinder stays at INFO).
+logging:
+  level:
+    root: INFO
+    com.microservices: INFO
+    audit: INFO
+    org.springframework.web: INFO
+    org.hibernate: INFO
+
+# OpenAPI/Swagger Configuration
+springdoc:
+  api-docs:
+    path: /api-docs
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    operations-sorter: method
+    tags-sorter: alpha
+    display-request-duration: true
+    doc-expansion: none
+  show-actuator: true
+
+# Application Specific Configuration
+application:
+  name: Order Service
+  version: 1.0.0
+  description: Orders (checkout from the cart, stock reservation) Microservice
+  api:
+    version: v1
+    base-path: /api/orders
+
+# The other services this service calls. The defaults are the local ports; on AWS they point at the load balancer.
+order:
+  product-service:
+    url: ${PRODUCT_SERVICE_URL:http://localhost:8081}
+  inventory-service:
+    url: ${INVENTORY_SERVICE_URL:http://localhost:8082}
+  cart-service:
+    url: ${CART_SERVICE_URL:http://localhost:8084}
+  clients:
+    # A slow or stopped service must not hang a checkout: connect 2 seconds, read 5 seconds.
+    connect-timeout-ms: 2000
+    read-timeout-ms: 5000
+
+# Security settings. The secret comes from an environment variable.
+# Outside the dev profile the service refuses to start if it is missing (see JwtStartupCheck).
+app:
+  security:
+    jwt:
+      # At least 32 bytes. The same value must be used by user-service, product-service, inventory-service and cart-service.
+      secret: ${JWT_SECRET:}
+  logging:
+    # The email address is personal data. Set this to false to keep it out of every log line.
+    include-email: true
+    # A request that takes longer than this is logged as a WARN with slow=true.
+    slow-request-ms: 2000
+
+---
+# Development Profile
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  jpa:
+    # SQL goes through the logger org.hibernate.SQL (below), not straight to the console.
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+logging:
+  level:
+    com.microservices: DEBUG
+    # The SQL text (never its parameter values: BasicBinder stays at INFO).
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: INFO
+
+# Local-only placeholder so a local run needs no set-up. It must never be used on AWS.
+app:
+  security:
+    jwt:
+      secret: ${JWT_SECRET:dev-only-placeholder-secret-do-not-use-in-aws-0123456789}
+
+---
+# Production Profile
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  datasource:
+    url: ${DB_URL:jdbc:h2:file:/data/orderdb;AUTO_SERVER=TRUE}
+    username: ${DB_USERNAME:sa}
+    password: ${DB_PASSWORD:}
+
+  jpa:
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+logging:
+  level:
+    com.microservices: INFO
+    org.springframework.web: WARN
+
+management:
+  endpoint:
+    health:
+      show-details: when-authorized

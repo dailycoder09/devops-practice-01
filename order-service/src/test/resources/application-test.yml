@@ -1,0 +1,18 @@
+# Used by the tests that run with @ActiveProfiles("test").
+# Own in-memory database per Spring context, and test-only security values (never used outside the tests).
+spring:
+  datasource:
+    url: jdbc:h2:mem:orderdb-${random.uuid};DB_CLOSE_DELAY=-1
+  jpa:
+    show-sql: false
+
+app:
+  security:
+    jwt:
+      secret: test-only-secret-for-order-service-tests-0123456789-abcdefghij
+
+order:
+  clients:
+    # Short time-outs, so a test with a slow fake service stays fast. The real defaults are 2 s and 5 s.
+    connect-timeout-ms: 600
+    read-timeout-ms: 600
