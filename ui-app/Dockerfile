@@ -5,6 +5,12 @@ COPY package*.json ./
 RUN npm ci
 COPY . .
 RUN npm run build
+# Files copied from public/ (the photos) keep the mode they have on the build machine (a 640 photo is
+# unreadable for the non-root nginx user and gives 403), so make everything in dist readable.
+RUN chmod -R a+rX dist
+# Build with --build-arg WITH_PHOTOS=no when the photos come from S3: the image then has no photos folder (56 MB smaller).
+ARG WITH_PHOTOS=yes
+RUN if [ "$WITH_PHOTOS" != "yes" ]; then rm -rf dist/photos; fi
 
 # Runtime stage: nginx serves the static files as a non-root user on port 8080.
 FROM docker.io/nginxinc/nginx-unprivileged:1.27-alpine

@@ -1,0 +1,26 @@
+# Use PostgreSQL (Amazon RDS) instead of the H2 file database.
+# Start the service with:  SPRING_PROFILES_ACTIVE=prod,postgres
+# The database settings have NO defaults on purpose: if one of them is missing, the service stops at startup
+# instead of quietly using something else.
+#   DB_URL       jdbc:postgresql://<host>:5432/<database>
+#   DB_USERNAME  DB_PASSWORD
+#   DB_SCHEMA    user_svc  (this service's own schema in the shared database; Flyway creates it)
+#   DB_POOL_MAX, DB_POOL_MIN_IDLE  optional, default 5 and 1
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      schema: ${DB_SCHEMA}
+      maximum-pool-size: ${DB_POOL_MAX:5}
+      minimum-idle: ${DB_POOL_MIN_IDLE:1}
+
+  flyway:
+    schemas: ${DB_SCHEMA}
+
+  jpa:
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC

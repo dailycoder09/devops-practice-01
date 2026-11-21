@@ -1,0 +1,36 @@
+# Profile "postgres": run on PostgreSQL (Amazon RDS) instead of the built-in H2 file database.
+#
+# Switch it on with the environment variable:   SPRING_PROFILES_ACTIVE=prod,postgres
+# All five services share ONE PostgreSQL database; each one has its own schema in it (this one: inventory_svc).
+# Flyway creates the schema itself and runs db/migration/common plus db/migration/postgresql.
+#
+# Required environment variables (there are NO defaults on purpose: a missing value stops the service at start-up):
+#   DB_URL        jdbc:postgresql://<host>:5432/<database>
+#   DB_USERNAME   database user
+#   DB_PASSWORD   database password (never commit it)
+#   DB_SCHEMA     the schema of this service: inventory_svc
+# Optional:
+#   DB_POOL_MAX (default 5), DB_POOL_MIN_IDLE (default 1)
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      schema: ${DB_SCHEMA}
+      maximum-pool-size: ${DB_POOL_MAX:5}
+      minimum-idle: ${DB_POOL_MIN_IDLE:1}
+      # Every time stamp in the database is UTC. Hibernate writes UTC (time_zone below), but the database's own
+      # CURRENT_TIMESTAMP (column defaults and the native stock UPDATEs) uses the time zone of the connection,
+      # which the PostgreSQL driver sets to the time zone of the JVM. Without this line a JVM that is not in
+      # UTC (a laptop, say) would mix two clocks in one row.
+      connection-init-sql: SET TIME ZONE 'UTC'
+
+  flyway:
+    schemas: ${DB_SCHEMA}
+
+  jpa:
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC

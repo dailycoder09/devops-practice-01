@@ -26,7 +26,7 @@ Listener rules (the first two are from your old ALB notes; the others match `dep
 | 50 (planned) | `/api/orders*` | `order-tg` |
 | default | everything else | `ui-tg` |
 
-Use plain "Forward to one target group" actions, not weighted forwarding. Register **both VMs** in each target group.
+Use plain "Forward to one target group" actions, not weighted forwarding. Register **both VMs** in each target group (but see [DEPLOY-AWS.md](DEPLOY-AWS.md), Step 9: while every VM has its own H2 data, start with one VM). The console steps to create these target groups and rules are in [DEPLOY-AWS.md](DEPLOY-AWS.md).
 
 The load balancer sends each health check straight to the target, on the port and path set in the target group. So `/actuator/health` does not need its own listener rule. The target group itself must be used by a listener rule, or its targets show as `unused`.
 

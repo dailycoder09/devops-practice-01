@@ -12,11 +12,11 @@ We are learning AWS and DevOps with a real app: a small online shop built from f
 | `cart-service/` | One cart per logged-in user | 8084 |
 | `order-service/` | Places orders from the cart, reserves stock, keeps the orders; admin list of orders | 8085 |
 | `ui-app/` | The shop in the browser: React + TypeScript (Vite), served by nginx in a container | 5173 (dev), 8080 (container) |
-| `deploy/` | `local/`: run the shop in containers on your Mac. `aws/`: the EC2 start-up script | 8000 (local gateway) |
+| `deploy/` | `local/`: run the shop in containers on your Mac. `aws/`: user data and installer for VMs behind a load balancer ([DEPLOY-AWS.md](DEPLOY-AWS.md)) | 8000 (local gateway) |
 
 The product, inventory and UI apps and the `deploy/` folder started as copies from `Microservices-demo`; the user, cart and order services are new, and the UI was redesigned. Keep `product-service/` and `inventory-service/` side by side: one inventory-service test reads `../product-service/src/main/resources/db/migration`.
 
-Each service has its own `README.md` with more detail. Health check paths and load balancer settings are in [HEALTH-CHECKS.md](HEALTH-CHECKS.md).
+Each service has its own `README.md` with more detail. Health check paths and load balancer settings are in [HEALTH-CHECKS.md](HEALTH-CHECKS.md). The steps to run the shop on AWS VMs behind a load balancer are in [DEPLOY-AWS.md](DEPLOY-AWS.md).
 
 ## What you need on your Mac
 
@@ -62,7 +62,7 @@ Open **http://localhost:5173**. The dev server passes `/api/products` to 8081, `
 
 **About the photos:** `IMAGE_BASE_URL` only works when the product database is first created (a database migration applies it once). To switch an existing setup, stop `product-service`, delete `product-service/data/productdb*` and start it again with the variable. Some of the sample photos do not match their product (they came with the project).
 
-All services keep their data in an H2 file database under their own `data/` folder. The tables are created at start-up by Flyway. Logs go to each service's `logs/` folder (see "Logging and observability").
+By default (local runs, tests, and one VM without RDS) every service keeps its data in an H2 file under its own `data/` folder. With the Spring profile `postgres` (`SPRING_PROFILES_ACTIVE=prod,postgres`) all five services use ONE PostgreSQL database instead (Amazon RDS on AWS), each service in its own schema (`product_svc`, `inventory_svc`, `user_svc`, `cart_svc`, `order_svc`). The tables are created at start-up by Flyway (migrations in `db/migration/common`, `db/migration/h2` and `db/migration/postgresql` of each service). Logs go to each service's `logs/` folder (see "Logging and observability").
 
 Quick checks:
 
@@ -112,7 +112,13 @@ deploy/local/down.sh    # stop and remove the containers and the network
 
 Then open http://localhost:8000. It needs the Podman machine running with more than 6 GB of memory (seven JVMs; see `deploy/local/README.md`). In this setup the order service talks to `inventory-a` directly, so a reserve and its release reach the same stock database (details in `deploy/local/README.md`).
 
-`deploy/aws/user-data.sh` is the start-up script for an EC2 instance. It installs Docker, clones this project from GitHub (`dailycoder09/devops-practice-01`, branch `main`), builds the three original apps and starts them. Two things must be true before you launch an instance: the repo is **public** (the script clones without a login), and you have **pushed** your commits. It does not start the user, cart or order service yet; that is added with the AWS stages.
+## Deploy on AWS VMs behind a load balancer
+
+**[DEPLOY-AWS.md](DEPLOY-AWS.md)** has the steps (you create the security groups, the VM, the target groups and the load balancer by hand in the console).
+
+- The way the guide follows: build the six images **on your Mac** with `deploy/local/build-images.sh` (Podman; the six images become one file, and the ui is built without the photos), upload that file and the product photos to an **S3 bucket**, then paste `deploy/aws/user-data-s3.sh` into the VM's user data. The VM only downloads the file, loads the images and runs them (a few minutes; no git, no Maven, no building on the VM; UI on 8080, services on 8081 to 8085). Other ways, kept for later: `deploy/aws/user-data.sh` clones this project from GitHub (`dailycoder09/devops-practice-01`) and builds on the VM (about 20 minutes); `deploy/aws/user-data-raw.sh` is the same without a database (one VM, H2); `buildspec.yml` and `deploy/aws/user-data-ecr.sh` build in CodeBuild and use ECR (last section of DEPLOY-AWS.md).
+- The repo must be **public** and pushed (the VM clones it without a login). Fill in `DB_HOST` (the RDS endpoint), `DB_PASSWORD`, `JWT_SECRET` and `ADMIN_PASSWORD` only in the copy you paste into the console, and use the **same four values on every VM**; never commit real secrets. With `DB_HOST` empty (one VM, no RDS) the VM makes its own secret and admin password (the admin login is printed in `/var/log/user-data.log`).
+- Without RDS, run **one VM only**: each VM keeps its own H2 data, so a second VM would not share users, carts, orders or stock, and its tokens would not match. With RDS (Step 1b of DEPLOY-AWS.md) and the same four values everywhere, any number of VMs can sit behind the load balancer.
 
 ## Login, roles and the rules
 
@@ -192,7 +198,8 @@ Example line (shortened):
 | `CART_SERVICE_URL` | order-service | Where to find cart-service (default `http://localhost:8084`) |
 | `IMAGE_BASE_URL` | product-service | Where the product photos are served from (`/photos` locally, or for example an S3 address). Applied once, when the database is created |
 | `CLOUD_METADATA_ENABLED` | product, inventory | Read EC2 instance details for the `server-info` endpoint (default on; it fails quietly off AWS) |
-| `DB_FILE_PATH`, `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | all five services | Database location and login |
+| `DB_FILE_PATH`, `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | all five services | Database location and login (H2 by default) |
+| `DB_SCHEMA`, `DB_POOL_MAX` (default 5), `DB_POOL_MIN_IDLE` (default 1) | all five services, profile `postgres` | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` and `DB_SCHEMA` are **required** with the profile `postgres`; the service refuses to start and names the missing one |
 | `JWT_SECRET` | all five services | The secret that signs and checks login tokens (at least 32 bytes). Placeholder in `dev`; required elsewhere |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | user-service | The admin account created at first start. Placeholders in `dev`; required elsewhere |
 | `LOG_PATH` | all five services | Folder for the JSON log file (default `logs`) |
@@ -205,7 +212,7 @@ Each stage ends with a working app that can be rebuilt from scratch in one sandb
 |---|---|---|
 | 0 | Copy the apps, check they build, test and run, read what the sandbox allows | none yet (done, except reading the sandbox) |
 | 1 | The baseline as Terraform: network, two servers, load balancer with path rules | VPC, EC2, ALB, Security Groups, IAM |
-| 2 | One shared database instead of an H2 file on each server (all five services) | RDS (PostgreSQL), Parameter Store or Secrets Manager |
+| 2 | One shared database instead of an H2 file on each server (all five services). **Code done and tested on a local PostgreSQL 16; not yet run against your RDS.** | RDS (PostgreSQL); Parameter Store or Secrets Manager is optional |
 | 3 | Photos in a bucket, and a CDN in front | S3, CloudFront |
 | 4 | Containers instead of building on the server at boot | ECR, ECS |
 | 5 | Automatic build and test, logs and alarms | GitHub Actions, CloudWatch, SNS |
@@ -216,7 +223,7 @@ Stages 1 to 6 are outlines. Before each stage we check that its services are all
 
 What the new services add to the AWS stages:
 - **Target groups and rules:** `user-tg` (8083, `/api/users*`), `cart-tg` (8084, `/api/cart*`) and `order-tg` (8085, `/api/orders*`), health check `/actuator/health`; CloudFront must pass the `Authorization` header through.
-- **Database:** PostgreSQL migrations for user, cart, order (and the `stock_reservations` table of inventory). With one database for all VMs, logins, carts and orders work on every VM. Today each service has its own H2 file.
+- **Database:** done in code: the profile `postgres`, one schema per service in one PostgreSQL database, and PostgreSQL versions of the migrations. With one database for all VMs, logins, carts, orders and stock work on every VM (tested with two copies of every service on one local PostgreSQL).
 - **Secrets:** `JWT_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` in Parameter Store or Secrets Manager.
 - **Logs and traces:** the services already write JSON to stdout, which CloudWatch Logs can read. Because of the trace id, X-Ray (through OpenTelemetry) can be added without code changes to the services.
 - **Stuck orders:** a scheduled job (EventBridge Scheduler and Lambda) can release the stock of orders left `PENDING` (the reservations are stored with their order id).
@@ -234,7 +241,8 @@ What the new services add to the AWS stages:
 - The shared secret lets any service make any token. A key pair (only `user-service` signs) is the later fix.
 - No transaction across services: if `order-service` stops in the middle of a checkout, an order stays `PENDING` and stock may stay reserved (a clean-up job can release it by order id).
 - Two checkouts of the same cart at the same instant could create two orders (the UI disables the button).
-- Every service has its own H2 file, so with two VMs carts, orders, users and stock are not shared until RDS. Locally there is one of each, except in `deploy/local`, where stock differs between the two simulated VMs (see `deploy/local/README.md`).
+- Without the profile `postgres` every service has its own H2 file, so two VMs do not share carts, orders, users or stock; with RDS they do. In `deploy/local` (two simulated VMs) stock still differs between the two, because that setup uses H2 (see `deploy/local/README.md`).
+- On PostgreSQL, rows with equal values in the sort column (for example equal prices) can come in a different order than on H2, and text sorting follows the database collation (RDS default en_US.UTF-8; H2 sorts by character code). Paging through a list sorted by a column with many equal values can repeat or skip a row on both databases, because the sort has no second key.
 - A request with a bad or expired token gets `401` even on a public page. The UI does not send tokens it knows are expired, and a `401` logs the person out.
 - The inventory list pages (`GET`) are public on the API; the admin-only inventory page is a UI rule.
 - `adjust` and `PUT` on inventory still read and then write without a lock; the database check still stops negative stock.
@@ -243,7 +251,7 @@ What the new services add to the AWS stages:
 
 We think the AWS access is a Pluralsight AWS sandbox. From Pluralsight's help pages: only `us-east-1` and `us-west-2`, sessions of about 4 hours, everything is deleted when a session ends, and some services or actions are blocked. Because of this, the environment must be rebuildable with one command (Terraform, local state). Do not try to work around blocked actions.
 
-## Status (checked on 2026-11-19)
+## Status (checked on 2026-11-19 and 2026-11-20)
 
 Built and verified on this Mac:
 
@@ -254,12 +262,16 @@ Built and verified on this Mac:
 - [x] One real order followed across the order, cart, product and inventory services by its trace id (users, roles and IP right on every line); every line of all five JSON logs parses; zero secrets found in any log
 - [x] Real Chrome (driven by a script) against the live services, re-run after the design polish: 43 of 43 checks (visitor, search suggestions, real photos, register, order, refused order, admin pages, normal user blocked, no sideways scroll at phone width)
 - [x] Health check reference: [HEALTH-CHECKS.md](HEALTH-CHECKS.md)
-- [x] `deploy/aws/user-data.sh` points at this project's repo (`devops-practice-01`)
+- [x] AWS VM deployment written: [DEPLOY-AWS.md](DEPLOY-AWS.md) (manual console steps) and `deploy/aws/user-data.sh`. Checked on this Mac: syntax, the lines that make the secrets, and all five services running with the same `prod` settings the containers get (login 63 of 63 and shop 80 of 80 checks pass; the five services use about 2.0 GB together)
+- [x] Shared PostgreSQL (profile `postgres`, migrations in `db/migration/{common,h2,postgresql}`), checked 2026-11-20: existing tests still pass on H2 (product 452, inventory 513, user 261, cart 337, order 474) and new opt-in tests pass on PostgreSQL 16.9 (product 50, inventory 12, user 7, cart 9, order 9). Two copies of every service on one PostgreSQL: tokens work on both copies, users, carts, orders and stock are shared, 8 simultaneous orders for 4 items gave 4 accepted and 4 refused
+- [x] The six container images were built in Podman with the real Dockerfiles (the first build of user, cart, order and ui) and run with a `postgres:16-alpine` container: all services healthy, five schemas created, 5010 products, a token from one user-service copy accepted by the other cart-service copy, one order end to end, a missing `DB_SCHEMA` stops the service with a clear message. This found and fixed one bug: photo files with mode 640 gave 403 in the ui image (`ui-app/Dockerfile` now makes `dist` readable)
 
 Open:
 
+- [ ] **The PostgreSQL profile has not run against Amazon RDS yet** (only PostgreSQL 16 on this Mac, without SSL; the AWS script uses `sslmode=require`). Flyway 9.22 prints a warning that PostgreSQL 16 is newer than it tested; the migrations ran fine.
 - [ ] **Commit and push to GitHub (you).** The repo exists and is public, but empty. Nothing was committed by the assistant.
 - [ ] **Podman image builds fail here.** Maven and npm downloads time out inside the build container: it cannot reliably reach the company proxy (the Podman VM itself can, the containers inside it only sometimes). The apps are fine; this is a network problem. Because of it, the Dockerfiles for user, cart and order, `deploy/local/up.sh` and the gateway rules are **untested** (only `bash -n` and `nginx -t` were run), and `/healthz` and the JSON access logs of nginx were not seen running in the project's own images.
+- [ ] **`user-data.sh` has not run on a real AWS VM.** There is no AWS account here. The Docker images for user, cart and order have never been built (image builds fail on this Mac); product, inventory and the UI built on EC2 before. DEPLOY-AWS.md says where to look if the first boot fails.
 - [ ] Nothing was tried in a real phone, Safari or Firefox (Chrome only), and no screen reader was used.
 - [ ] AWS CLI installed (you)
 - [ ] Sandbox started and allowed services written down (you)

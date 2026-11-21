@@ -41,7 +41,7 @@ The Product Service provides RESTful APIs for complete product lifecycle managem
 ├─────────────────────────────────────┤
 │        Repository Layer             │  Data access
 ├─────────────────────────────────────┤
-│         Database (H2, file-based)   │  Data persistence
+│   Database (H2, or PostgreSQL)      │  Data persistence
 └─────────────────────────────────────┘
 ```
 
@@ -60,7 +60,7 @@ The Product Service provides RESTful APIs for complete product lifecycle managem
 | Framework | Spring Boot | 3.2.1 |
 | Language | Java | 17 |
 | Build Tool | Maven | 3.9+ |
-| Database | H2 (file-based) | Runtime-managed |
+| Database | H2 (file-based, default) or PostgreSQL 16 (profile `postgres`, Amazon RDS) | Runtime-managed |
 | Migration | Flyway | Latest |
 | Mapping | MapStruct | 1.5.5 |
 | Documentation | Swagger/OpenAPI | 2.2.0 |
@@ -74,7 +74,7 @@ The Product Service provides RESTful APIs for complete product lifecycle managem
 - Maven 3.9+
 - Docker (optional, only needed to build/run the container image)
 
-No external database is required — H2 runs as an embedded file-based database and the schema/data are created automatically by Flyway on startup.
+No external database is required — H2 runs as an embedded file-based database and the schema/data are created automatically by Flyway on startup. To use PostgreSQL (for example Amazon RDS) instead, see [Running on PostgreSQL](#-running-on-postgresql).
 
 ## 🚀 Getting Started
 
@@ -113,7 +113,7 @@ java -jar target/product-service-1.0.0.jar
 java -jar target/product-service-1.0.0.jar --spring.profiles.active=prod
 ```
 
-On first run, Flyway creates the `products` table and loads the seed data (10 handwritten samples + 5,000 generated products across 10 categories, each with brand/MRP/highlights/specifications/images) into a local H2 file at `./data/productdb` (configurable via the `DB_FILE_PATH` env var).
+On first run, Flyway creates the `products` table and loads the seed data (10 handwritten samples + 5,000 generated products across 10 categories, each with brand/MRP/highlights/specifications/images) into a local H2 file at `./data/productdb` (configurable via the `DB_FILE_PATH` env var). With the `postgres` profile it does the same in the PostgreSQL schema `product_svc`.
 
 ### Verify the Application
 
@@ -307,15 +307,16 @@ Validation (violations return the usual `400` problem-detail with an `errors` ma
 
 Every seeded product has 4 **dummy** placeholder images of the form `https://placehold.co/800x800/<bg>/E6EDF7/png?text=<SKU>+<n>` (`n` = 1-4, `bg` one of four dark colours). They need internet access to render and exist only so a UI has something to show. To use real pictures:
 - **Running environment**: call `PUT /api/products/{id}/images` per product with the real URLs (above).
-- **New environments / fresh databases**: edit the images section at the end of `V4__seed_product_details.sql` (the `INSERT INTO product_images ...` and the `UPDATE products SET image_url ...` statements) before the database is first created. Never edit a migration that has already run somewhere - Flyway checksums would fail; use a new `V5__...sql` migration for that.
+- **New environments / fresh databases**: edit the images section at the end of `V4__seed_product_details.sql` (the `INSERT INTO product_images ...` and the `UPDATE products SET image_url ...` statements) before the database is first created. The file exists twice, in `db/migration/h2` and in `db/migration/postgresql`: change both. Never edit a migration that has already run somewhere - Flyway checksums would fail; use a new `V6__...sql` migration for that.
 
 ## 🌱 Seed Data
 
-Flyway applies four migrations on startup:
+Flyway applies five migrations on startup. The scripts are in `src/main/resources/db/migration`: `common/` runs on both databases, `h2/` and `postgresql/` hold the versions for one database each (see [Running on PostgreSQL](#-running-on-postgresql)).
 - `V1__create_products_table.sql` — schema + 10 handwritten sample products
 - `V2__seed_products.sql` — 5,000 deterministically-generated products (fixed RNG seed, so every fresh environment gets identical data) spread evenly across 10 categories: Electronics, Home Appliances, Clothing, Books, Sports and Outdoors, Toys and Games, Groceries, Furniture, Beauty and Personal Care, and Automotive
 - `V3__product_details_schema.sql` — new `brand`, `mrp`, `warranty`, `seller`, `image_url` columns on `products` (all nullable, `mrp >= 0` check, index on `brand`) and the `product_images`, `product_highlights`, `product_specifications` tables (`ON DELETE CASCADE` to `products`, indexed on `product_id`, image position unique per product)
 - `V4__seed_product_details.sql` — details for all 5,010 products. The 10 original products have hand-written brand, MRP, warranty, seller, 5 highlights, 8-9 specifications in 3 groups and 4 images. The 5,000 generated products get a brand from a per-category pool of 6 made-up names, an MRP of price x 1.10-1.60 (never below price), a per-category warranty/seller, 3-5 highlights, 6-8 specifications in 2 groups from per-category templates, and 4 dummy images. It is deterministic (no RNG, everything derives from `MOD(id, n)`) and written set-based (`MERGE` / `INSERT ... SELECT` from small `VALUES` template tables) rather than one `INSERT` per row, so it stays fast on every fresh start.
+- `V5__real_product_photos.sql` — points the products at real photos in S3 when `IMAGE_BASE_URL` is set; with it empty the script changes nothing
 
 Total: 5,010 products, enough volume to meaningfully exercise pagination, search, and category filtering. Deleting a product removes its images, highlights and specifications (JPA cascade plus the foreign keys' `ON DELETE CASCADE`).
 
@@ -356,7 +357,7 @@ mvn clean test jacoco:report
 
 View the coverage report at `target/site/jacoco/index.html`.
 
-The suite (221 tests, up from 79 before product details) is pure JUnit 5 + Mockito + MockMvc + an embedded H2 database (`@DataJpaTest`) — no Docker or Testcontainers required to run it. The JaCoCo 80% line-coverage gate applies to the `controller`, `service`, `service.impl`, `client`, and `repository` packages; generated/boilerplate code (`dto`, `exception`, `config`, `mapper`, `model`) is excluded by design (the mapper and discount calculation are still unit-tested).
+The suite (221 tests, up from 79 before product details) is pure JUnit 5 + Mockito + MockMvc + an embedded H2 database (`@DataJpaTest`) — no Docker or Testcontainers required to run it. The one exception is `PostgresSmokeTest`, which only runs when `TEST_PG_URL` is set (see [Running on PostgreSQL](#-running-on-postgresql)). The JaCoCo 80% line-coverage gate applies to the `controller`, `service`, `service.impl`, `client`, and `repository` packages; generated/boilerplate code (`dto`, `exception`, `config`, `mapper`, `model`) is excluded by design (the mapper and discount calculation are still unit-tested).
 
 What the product-details tests cover:
 - **Service unit tests** (`ProductServiceImplTest`): details by id/SKU with and without stock, not found, image replacement (primary `imageUrl` set/cleared, delete flushed before re-insert), create/update with the new fields (collections replaced, null leaves unchanged, empty list clears, MRP below price rejected).
@@ -374,12 +375,64 @@ What the product-details tests cover:
 - Optimized logging
 - DB connection details overridable via `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` env vars
 
+### PostgreSQL Profile (`postgres`)
+- Switches the database from H2 to PostgreSQL. Use it together with `prod`: `SPRING_PROFILES_ACTIVE=prod,postgres` (see [Running on PostgreSQL](#-running-on-postgresql))
+
 Activate a profile:
 ```bash
 java -jar app.jar --spring.profiles.active=prod
 ```
 
 The H2 web console is disabled in all profiles (`spring.h2.console.enabled: false`) — it's a known RCE vector (CVE-2021-42392) when left reachable.
+
+## 🐘 Running on PostgreSQL
+
+The service runs on the embedded H2 database by default. With the Spring profile `postgres` it runs on PostgreSQL 16 instead (Amazon RDS in AWS). All five services share one PostgreSQL database and each service has its own schema; this one uses `product_svc`. Flyway creates the schema itself, so you only need an empty database and a user that may create schemas in it.
+
+```bash
+export SPRING_PROFILES_ACTIVE=prod,postgres
+export DB_URL=jdbc:postgresql://<host>:5432/<database>
+export DB_USERNAME=<user>
+export DB_PASSWORD=<password>        # never commit it
+export DB_SCHEMA=product_svc
+export JWT_SECRET=<at least 32 bytes>  # as for every non-dev run
+java -jar target/product-service-1.0.0.jar
+```
+
+| Variable | Needed | Meaning |
+|----------|--------|---------|
+| `DB_URL` | yes | JDBC address, for example `jdbc:postgresql://mydb.abc123.us-east-1.rds.amazonaws.com:5432/microshop` |
+| `DB_USERNAME` | yes | database user |
+| `DB_PASSWORD` | yes | password of that user |
+| `DB_SCHEMA` | yes | schema of this service: `product_svc` |
+| `DB_POOL_MAX` | no | most connections in the pool (default 5) |
+| `DB_POOL_MIN_IDLE` | no | connections kept ready (default 1) |
+
+The four required variables have no defaults on purpose: when one is missing the service stops at start-up instead of guessing. The message does not always name the variable. Look for `URL must start with 'jdbc'`, `password authentication failed for user "${DB_USERNAME}"` or `No value provided for placeholder: ${DB_SCHEMA}`.
+
+How the migrations are organised (`src/main/resources/db/migration`):
+- `common/` — scripts that run unchanged on both databases (`V2__seed_products.sql`).
+- `h2/` — the scripts written for H2 (`V1`, `V3`, `V4`, `V5`). They are the original files, moved without any change, so H2 databases that already exist keep their Flyway checksums.
+- `postgresql/` — the same scripts for PostgreSQL, with the same file names. They create the same tables and the same data (checked table by table: same row counts and the same fingerprint over every row). The differences are only the SQL dialect: identity columns instead of `AUTO_INCREMENT`, `UPDATE ... FROM` instead of `MERGE`, `(array)[i]` instead of `ARRAY_GET`, `POSITION` instead of `LOCATE`, the `g` flag on `REGEXP_REPLACE` (H2 replaces every match, PostgreSQL only the first one without it), and timestamp defaults in UTC.
+- A new migration goes into `common/` if it runs on both databases. If not, write one file per database with the same file name. A version number is used once per database. Never edit a script that has already run anywhere: add a new version.
+- `baseline-on-migrate` is off: a schema that already has tables but no Flyway history makes the service stop, instead of silently skipping `V1`.
+
+Things that behave differently on the two databases:
+- Text sort order (`sortBy=name`, `category`, `brand`, ...) follows the collation of the database. H2 sorts by character code; RDS uses `en_US.UTF-8` by default, which sorts `iPad Air` between `GoPro ...` and `Kindle ...`, not after every capital letter. The web UI only sorts by price and id.
+- Rows with the same value in the sort column come in no fixed order on either database, so equal prices can change places between H2 and PostgreSQL.
+- A `NULL` (for example a product without a brand) sorts first in ascending order on H2 and last on PostgreSQL.
+
+### PostgresSmokeTest
+
+`PostgresSmokeTest` starts the whole service on a real PostgreSQL, runs Flyway `V1`-`V5` there and calls the API over HTTP (list, sort, details, categories, search, create/update/delete). The normal `mvn test` skips it. To run it, point it at a PostgreSQL database (a throw-away one, see the warning below):
+
+```bash
+TEST_PG_URL=jdbc:postgresql://localhost:5432/microshop \
+TEST_PG_USER=<user> TEST_PG_PASSWORD=<password> \
+mvn test -Dtest=PostgresSmokeTest
+```
+
+It works in the schema `product_svc_test` of that database and **drops that schema (with everything in it) before every run**, so it can be repeated. It never touches `product_svc`.
 
 ## 📈 Performance Optimization
 

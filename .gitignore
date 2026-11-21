@@ -28,6 +28,9 @@ target/
 node_modules/
 dist/
 *.jar
+# The saved image file for AWS (deploy/local/build-images.sh): large, goes to S3, never to git
+deploy/local/out/
+*.tar.gz
 
 # Tool folders that are not part of the project
 .remember/

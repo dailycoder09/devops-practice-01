@@ -1,71 +1,57 @@
 #!/bin/bash
-# EC2 user data for Amazon Linux 2023. Paste this into "Advanced details > User data" when launching
-# each web instance. It installs Docker, builds the three apps from GitHub and starts them.
-#
-# Containers use host networking, so each app listens on its own port on the instance and the
-# services reach each other on localhost (product-service -> localhost:8082 and the other way round).
-# No service URLs need to be configured.
-#
-#   ui-app             8080   (target group health check: /healthz)
-#   product-service    8081   (health check: /actuator/health)
-#   inventory-service  8082   (health check: /actuator/health)
-#
-# Follow the build with:  sudo tail -f /var/log/user-data.log
-set -euo pipefail
-exec > /var/log/user-data.log 2>&1
+# MicroShop on a VM (Amazon Linux 2023). Paste this file into: EC2 > Launch instance > Advanced details > User data.
+# First boot: installs git + docker, pulls the code from GitHub, builds one container per service and runs them.
+# Ports on the VM: 8080 UI, 8081 product, 8082 inventory, 8083 user, 8084 cart, 8085 order.
+# Watch it:  sudo tail -f /var/log/user-data.log
+# Fill in the secret values ONLY in the copy you paste into the console, never in the file on GitHub.
+# Use only letters and digits in DB_PASSWORD and ADMIN_PASSWORD (they sit inside double quotes below).
+set -eo pipefail
+touch /var/log/user-data.log && chmod 600 /var/log/user-data.log   # the log holds the admin password: root only
+exec > >(tee -a /var/log/user-data.log) 2>&1
 
-# Where the product photos are served from. "/photos" means the ui-app container itself (the photos are
-# baked into its image, so no S3 bucket is needed). Use a full address such as
-#   https://my-photos-bucket.s3.us-east-1.amazonaws.com
-# to serve them from S3 instead, or leave it empty to keep the placeholder images.
-IMAGE_BASE_URL="/photos"
+REPO_URL="https://github.com/dailycoder09/devops-practice-01.git"   # must be a public repo
+ADMIN_EMAIL="admin@example.com"
+PHOTOS_URL=""        # https://<bucket>.s3.us-west-2.amazonaws.com = product photos from S3 (used on a NEW database); empty = photos inside the ui image
+DB_HOST=""           # RDS endpoint. Empty = no RDS: every service keeps its own H2 file (run ONE VM only).
+DB_NAME="microshop"
+DB_USER="microshop"
+DB_PASSWORD=""       # the RDS master password
+JWT_SECRET=""        # with RDS: the SAME value on every VM. Make one:  openssl rand -base64 48
+ADMIN_PASSWORD=""    # with RDS: the SAME value on every VM
 
-echo "===== USER DATA STARTED ====="
-
-# Maven and npm builds need more memory than a small instance has: add 2 GB of swap.
-if ! swapon --show | grep -q /swapfile; then
-  dd if=/dev/zero of=/swapfile bs=1M count=2048
-  chmod 600 /swapfile
-  mkswap /swapfile
-  swapon /swapfile
-  echo "Swap enabled"
+if [ -n "$DB_HOST" ]; then
+  [ -n "$DB_PASSWORD" ] && [ -n "$JWT_SECRET" ] && [ -n "$ADMIN_PASSWORD" ] || {
+    echo "STOP: with DB_HOST set, DB_PASSWORD, JWT_SECRET and ADMIN_PASSWORD must be filled in (the same on every VM)."; exit 1; }
 fi
+[ -n "$JWT_SECRET" ] || JWT_SECRET=$(head -c 48 /dev/urandom | base64 | tr -d '\n')
+[ -n "$ADMIN_PASSWORD" ] || ADMIN_PASSWORD=$(head -c 24 /dev/urandom | base64 | tr -d '+/=\n' | cut -c1-20)
+echo "ADMIN LOGIN: $ADMIN_EMAIL / $ADMIN_PASSWORD" >> /var/log/user-data.log   # only into the root-only file, not onto the console output
 
-dnf update -y
 dnf install -y git docker
+systemctl enable --now docker
+usermod -aG docker ec2-user      # ec2-user can run docker without sudo (after the next login)
+git clone --depth 1 "$REPO_URL" /opt/microshop
+cd /opt/microshop
 
-systemctl enable docker
-systemctl start docker
-echo "Docker started"
+for s in product inventory user cart order; do
+  if [ -n "$DB_HOST" ]; then      # shared PostgreSQL: one database, one schema per service (created on first start)
+    DB_ENV=(-e SPRING_PROFILES_ACTIVE=prod,postgres -e "DB_URL=jdbc:postgresql://$DB_HOST:5432/$DB_NAME?sslmode=require"
+            -e "DB_USERNAME=$DB_USER" -e "DB_PASSWORD=$DB_PASSWORD" -e "DB_SCHEMA=${s}_svc")
+  else                            # no RDS: a small H2 file inside the container
+    DB_ENV=(-e SPRING_PROFILES_ACTIVE=prod -e "DB_URL=jdbc:h2:file:/app/data/${s}db;AUTO_SERVER=TRUE")
+  fi
+  ADMIN_ENV=()
+  [ "$s" = user ] && ADMIN_ENV=(-e "ADMIN_EMAIL=$ADMIN_EMAIL" -e "ADMIN_PASSWORD=$ADMIN_PASSWORD")
+  docker build -t "$s-service" "$s-service"
+  docker run -d --name "$s-service" --restart unless-stopped --network host \
+    --log-opt max-size=10m --log-opt max-file=3 \
+    "${DB_ENV[@]}" "${ADMIN_ENV[@]}" -e JWT_SECRET="$JWT_SECRET" \
+    -e JAVA_OPTS="-Xms128m -Xmx320m" -e "IMAGE_BASE_URL=${PHOTOS_URL:-/photos}" \
+    "$s-service"
+done
 
-usermod -aG docker ec2-user
-
-cd /home/ec2-user
-git clone https://github.com/dailycoder09/devops-practice-01.git
-cd devops-practice-01
-echo "Repository cloned"
-
-build_and_run() {
-  local name="$1" dir="$2"
-  shift 2
-  echo "===== $name ====="
-  docker build -t "$name:1.0" "$dir"
-  docker rm -f "$name-container" >/dev/null 2>&1 || true
-  docker run -d \
-    --name "$name-container" \
-    --restart unless-stopped \
-    --network host \
-    "$@" \
-    "$name:1.0"
-  echo "$name started"
-}
-
-build_and_run product-service   product-service -e "IMAGE_BASE_URL=$IMAGE_BASE_URL"
-build_and_run inventory-service inventory-service
-build_and_run ui-app            ui-app
-
-echo "===== DOCKER IMAGES ====="
-docker images
-echo "===== DOCKER CONTAINERS ====="
-docker ps -a
-echo "===== USER DATA COMPLETED ====="
+UI_ARGS=()
+[ -z "$PHOTOS_URL" ] || UI_ARGS=(--build-arg WITH_PHOTOS=no)   # photos come from S3: the ui image does not need its own copy
+docker build "${UI_ARGS[@]}" -t ui-app ui-app
+docker run -d --name ui-app --restart unless-stopped --network host ui-app
+echo "DONE: MicroShop is starting on this VM (the Java services need about a minute)."

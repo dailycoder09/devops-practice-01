@@ -35,7 +35,7 @@ class StockReservationsMigrationTest {
     private Flyway flyway(String target) {
         return Flyway.configure()
                 .dataSource(dataSource)
-                .locations("classpath:db/migration")
+                .locations("classpath:db/migration/common", "classpath:db/migration/h2")
                 .target(target)
                 .load();
     }
@@ -53,7 +53,7 @@ class StockReservationsMigrationTest {
 
     @Test
     void theMigrationFileExists_withTheExpectedName() {
-        assertThat(new ClassPathResource("db/migration/V3__create_stock_reservations.sql").exists()).isTrue();
+        assertThat(new ClassPathResource("db/migration/h2/V3__create_stock_reservations.sql").exists()).isTrue();
     }
 
     @Test

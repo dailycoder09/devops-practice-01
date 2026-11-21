@@ -99,6 +99,9 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     /**
      * Search products with multiple filters
      * 
+     * The CAST gives the search term a type even when it is null. Without it PostgreSQL gets an untyped null,
+     * reads it as bytea and fails with "function lower(bytea) does not exist". H2 does not care.
+     * 
      * @param searchTerm Search term for name or description
      * @param category Product category
      * @param minPrice Minimum price
@@ -107,8 +110,8 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
      * @return Page of products matching search criteria
      */
     @Query("SELECT p FROM Product p WHERE " +
-           "(:searchTerm IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
-           "OR LOWER(p.description) LIKE LOWER(CONCAT('%', :searchTerm, '%'))) AND " +
+           "(CAST(:searchTerm AS String) IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', CAST(:searchTerm AS String), '%')) " +
+           "OR LOWER(p.description) LIKE LOWER(CONCAT('%', CAST(:searchTerm AS String), '%'))) AND " +
            "(:category IS NULL OR p.category = :category) AND " +
            "(:minPrice IS NULL OR p.price >= :minPrice) AND " +
            "(:maxPrice IS NULL OR p.price <= :maxPrice)")

@@ -1,0 +1,38 @@
+version: 0.2
+
+# AWS CodeBuild: builds the six MicroShop images and pushes them to Amazon ECR.
+# Each image goes to its own ECR repository, microshop/<name>, tagged with the commit and with "latest".
+# Project settings (see DEPLOY-AWS.md, Step 1c): Amazon Linux standard image, "Privileged" ON (Docker needs it),
+# small or medium compute, and the project's IAM role needs AmazonEC2ContainerRegistryPowerUser.
+
+env:
+  variables:
+    ECR_PREFIX: "microshop"
+
+phases:
+  pre_build:
+    commands:
+      - export AWS_REGION="${AWS_REGION:-$AWS_DEFAULT_REGION}"
+      - ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+      - REGISTRY="$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+      - TAG=$(echo "$CODEBUILD_RESOLVED_SOURCE_VERSION" | cut -c1-8)
+      - '[ -n "$TAG" ] || TAG="build-$CODEBUILD_BUILD_NUMBER"'
+      - echo "Registry $REGISTRY, tag $TAG"
+      - aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$REGISTRY"
+  build:
+    commands:
+      # Build all six first, then push all six, so "latest" never mixes old and new images when one build fails.
+      - |
+        set -e
+        for s in product-service inventory-service user-service cart-service order-service ui-app; do
+          IMAGE="$REGISTRY/$ECR_PREFIX/$s"
+          docker build -t "$IMAGE:$TAG" -t "$IMAGE:latest" "$s"
+        done
+        for s in product-service inventory-service user-service cart-service order-service ui-app; do
+          IMAGE="$REGISTRY/$ECR_PREFIX/$s"
+          docker push "$IMAGE:$TAG"
+          docker push "$IMAGE:latest"
+        done
+  post_build:
+    commands:
+      - if [ "$CODEBUILD_BUILD_SUCCEEDING" = "1" ]; then echo "Done. Images are in $REGISTRY/$ECR_PREFIX/ with the tags $TAG and latest."; fi

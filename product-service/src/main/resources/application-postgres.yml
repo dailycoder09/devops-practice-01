@@ -1,0 +1,28 @@
+# Profile "postgres": run on PostgreSQL (Amazon RDS) instead of the embedded H2 database.
+# Turn it on together with the production profile:   SPRING_PROFILES_ACTIVE=prod,postgres
+#
+# All services share one PostgreSQL database; this service uses its own schema (product_svc) in it.
+# Flyway creates the schema itself and runs the scripts in db/migration/common and db/migration/postgresql.
+#
+# Four environment variables are required. They have NO defaults on purpose: if one is missing, the service stops at start-up.
+#   DB_URL       jdbc:postgresql://<host>:5432/<database>
+#   DB_USERNAME  database user
+#   DB_PASSWORD  database password (never commit it)
+#   DB_SCHEMA    product_svc
+# Optional: DB_POOL_MAX (default 5) and DB_POOL_MIN_IDLE (default 1), the size of the connection pool.
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      schema: ${DB_SCHEMA}
+      maximum-pool-size: ${DB_POOL_MAX:5}
+      minimum-idle: ${DB_POOL_MIN_IDLE:1}
+  flyway:
+    schemas: ${DB_SCHEMA}
+  jpa:
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC

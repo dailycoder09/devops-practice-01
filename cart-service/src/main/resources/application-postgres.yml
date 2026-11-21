@@ -1,0 +1,26 @@
+# Profile "postgres": run this service on PostgreSQL (Amazon RDS) instead of the local H2 file database.
+# Use it together with the production profile: SPRING_PROFILES_ACTIVE=prod,postgres
+# All five services share one database, each in its own schema (here: cart_svc), so these three values
+# and the schema name are required. There are no defaults: if one is missing, the service stops at start-up.
+#   DB_URL       jdbc:postgresql://<host>:5432/<database>
+#   DB_USERNAME  database user
+#   DB_PASSWORD  database password
+#   DB_SCHEMA    cart_svc (Flyway creates the schema and the table in it)
+# Optional: DB_POOL_MAX (default 5) and DB_POOL_MIN_IDLE (default 1), because five services share the connections of one RDS.
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      schema: ${DB_SCHEMA}
+      maximum-pool-size: ${DB_POOL_MAX:5}
+      minimum-idle: ${DB_POOL_MIN_IDLE:1}
+  flyway:
+    schemas: ${DB_SCHEMA}
+  jpa:
+    properties:
+      hibernate:
+        jdbc:
+          # Timestamps are written and read as UTC, whatever time zone the server or the database has.
+          time_zone: UTC

@@ -45,8 +45,8 @@ class InventoryRepositoryTest {
         Path migrationDir = baseDir.resolve("../product-service/src/main/resources/db/migration").normalize();
 
         Set<String> skus = new LinkedHashSet<>();
-        skus.addAll(extractSkus(migrationDir.resolve("V1__create_products_table.sql")));
-        skus.addAll(extractSkus(migrationDir.resolve("V2__seed_products.sql")));
+        skus.addAll(extractSkus(migrationDir.resolve("h2/V1__create_products_table.sql")));
+        skus.addAll(extractSkus(migrationDir.resolve("common/V2__seed_products.sql")));
         return skus;
     }
 
