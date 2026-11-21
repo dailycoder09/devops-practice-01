@@ -43,10 +43,14 @@ The app keeps nothing on its own disk in aws mode, so any number of copies can r
 JAVA_HOME=$(/usr/libexec/java_home -v 17) mvn test
 ```
 
-105 tests run without AWS. 16 more (DynamoDB Local and an S3 emulator) are skipped unless switched on: [docs/EMULATOR-TESTS.md](docs/EMULATOR-TESTS.md). Nothing has been run against real AWS yet; the first run on AWS is the real test.
+108 tests run without AWS. 16 more (DynamoDB Local and an S3 emulator) are skipped unless switched on: [docs/EMULATOR-TESTS.md](docs/EMULATOR-TESTS.md). Nothing has been run against real AWS yet; the first run on AWS is the real test.
 
 ## Known limits (a proof of concept)
 
 - Anyone can create links (no login yet). The five-tries limit is per instance.
 - The 100 MB limit is checked by the app after the upload (S3 signed uploads cannot limit size).
 - An unfinished upload leaves a file until the S3 lifecycle rule removes it (8 days).
+
+## Logging
+
+One line per event on the console (`journalctl -u droplink` on EC2), each with a request id `[rid]` that is also sent back as the `X-Request-Id` header. Logged: link created, active, unlocked, downloaded, deleted; wrong passwords (try x of 5) and lockouts; every refused request (WARN for 401, 403 and 429, INFO for the rest) with a masked IP; cleanup; SNS problems; unexpected errors with a stack trace. Never logged: full link ids (first 4 characters only), passwords, manage keys, signed addresses.

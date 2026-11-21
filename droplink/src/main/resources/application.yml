@@ -38,6 +38,8 @@ droplink:
   secret: ${DROPLINK_SECRET:}
 
 logging:
+  pattern:
+    level: "%5p [%X{rid:-}]"      # [rid] = the id of the request (also the X-Request-Id header)
   level:
     root: INFO
     com.droplink: INFO

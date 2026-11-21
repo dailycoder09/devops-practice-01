@@ -1,6 +1,7 @@
 package com.droplink.web;
 
 import com.droplink.service.ApiException;
+import com.droplink.service.ClientInfo;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +24,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ApiException.class)
     public Object handleApi(ApiException e, HttpServletRequest request) {
+        record(e.status(), e.getMessage(), request);
         return answer(e.status(), e.getMessage(), request);
     }
 
@@ -35,10 +37,25 @@ public class GlobalExceptionHandler {
     public Object handleOther(Exception e, HttpServletRequest request) {
         if (e instanceof ErrorResponse spring) {      // unknown address, wrong method, missing header: the status Spring chose
             HttpStatus status = HttpStatus.valueOf(spring.getStatusCode().value());
-            return answer(status, status == HttpStatus.NOT_FOUND ? "This page does not exist." : "The request is not valid.", request);
+            String message = status == HttpStatus.NOT_FOUND ? "This page does not exist." : "The request is not valid.";
+            record(status, message, request);
+            return answer(status, message, request);
         }
-        log.error("Unexpected error on {} {}", request.getMethod(), request.getRequestURI().replaceAll("[0-9A-Za-z]{12}", "<id>"), e);
+        log.error("Unexpected error on {} {}", request.getMethod(), LogSafe.path(request.getRequestURI()), e);
         return answer(HttpStatus.INTERNAL_SERVER_ERROR, "Something went wrong. Please try again.", request);
+    }
+
+    /** One line for every refused request. Wrong keys, wrong or locked passwords and forbidden access are WARN; the rest INFO. */
+    private static void record(HttpStatus status, String message, HttpServletRequest request) {
+        boolean security = status == HttpStatus.UNAUTHORIZED || status == HttpStatus.FORBIDDEN || status == HttpStatus.TOO_MANY_REQUESTS;
+        String line = "Refused {} {} -> {} \"{}\" from {}";
+        Object[] values = {request.getMethod(), LogSafe.path(request.getRequestURI()), status.value(), message,
+                ClientInfo.maskIp(request.getRemoteAddr())};
+        if (security) {
+            log.warn(line, values);
+        } else {
+            log.info(line, values);
+        }
     }
 
     private static Object answer(HttpStatus status, String message, HttpServletRequest request) {

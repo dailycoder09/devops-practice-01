@@ -155,13 +155,18 @@ public class LinkService {
         Instant now = clock.instant();
         String key = clientKey + "|" + id;
         if (limiter.blocked(key, now)) {
+            log.warn("Link {}... password refused: client {} is locked after too many wrong tries", shortId(id), ClientInfo.maskIp(clientKey));
             throw ApiException.tooManyAttempts();
         }
         if (passwords.matches(password, link.passwordHash())) {
             limiter.reset(key);
+            log.info("Link {}... unlocked with the password", shortId(id));
             return true;
         }
         limiter.failed(key, now);
+        int tries = limiter.recentFailures(key, now);
+        log.warn("Link {}... wrong password from {} (try {} of {}){}", shortId(id), ClientInfo.maskIp(clientKey), tries,
+                AttemptLimiter.maxFailures(), tries >= AttemptLimiter.maxFailures() ? ", client is now locked for 15 minutes" : "");
         return false;
     }
 

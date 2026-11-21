@@ -40,6 +40,21 @@ class AttemptLimiter {
         }
     }
 
+    int recentFailures(String key, Instant now) {
+        Deque<Instant> recent = failures.get(key);
+        if (recent == null) {
+            return 0;
+        }
+        synchronized (recent) {
+            prune(recent, now);
+            return recent.size();
+        }
+    }
+
+    static int maxFailures() {
+        return MAX_FAILURES;
+    }
+
     void reset(String key) {
         failures.remove(key);
     }
