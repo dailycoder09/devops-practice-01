@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>DropLink</title>
+  <link rel="stylesheet" th:href="@{/style.css}">
+</head>
+<body data-page="error">
+<main>
+  <header><a class="brand" th:href="@{/}">DropLink</a></header>
+  <section class="card">
+    <h1 th:text="${title != null} ? ${title} : 'Something went wrong'">Something went wrong</h1>
+    <p th:if="${message != null and !#strings.isEmpty(message)}" th:text="${message}"></p>
+    <p><a th:href="@{/}">Share a file</a></p>
+  </section>
+</main>
+</body>
+</html>

@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: droplink
+  servlet:
+    multipart:
+      enabled: false          # files never come through this app: the browser uploads to the store directly
+  thymeleaf:
+    cache: false
+
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: native        # behind a load balancer: Tomcat trusts X-Forwarded-For and X-Forwarded-Proto only from private addresses
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+# Every value comes from the environment. Empty = the default of local mode.
+droplink:
+  mode: ${DROPLINK_MODE:local}
+  public-url: ${DROPLINK_PUBLIC_URL:}
+  max-upload-mb: ${DROPLINK_MAX_UPLOAD_MB:100}
+  local-dir: ${DROPLINK_LOCAL_DIR:./droplink-data}
+  bucket: ${DROPLINK_BUCKET:}
+  key-prefix: ${DROPLINK_KEY_PREFIX:files/}
+  table: ${DROPLINK_TABLE:}
+  topic-arn: ${DROPLINK_TOPIC_ARN:}
+  region: ${DROPLINK_REGION:}
+  endpoint: ${DROPLINK_ENDPOINT:}
+  path-style: ${DROPLINK_PATH_STYLE:false}
+  secret: ${DROPLINK_SECRET:}
+
+logging:
+  level:
+    root: INFO
+    com.droplink: INFO

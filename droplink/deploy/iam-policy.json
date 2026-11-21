@@ -1,0 +1,42 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "UploadDownloadDeleteFiles",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::BUCKET/files/*"
+    },
+    {
+      "Sid": "ListSoMissingFilesAnswer404",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::BUCKET"
+    },
+    {
+      "Sid": "ReadTheJarRelease",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::BUCKET/releases/*"
+    },
+    {
+      "Sid": "LinkTable",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:Query",
+        "dynamodb:BatchWriteItem"
+      ],
+      "Resource": "TABLE_ARN"
+    },
+    {
+      "Sid": "DownloadMail",
+      "Effect": "Allow",
+      "Action": "sns:Publish",
+      "Resource": "TOPIC_ARN"
+    }
+  ]
+}

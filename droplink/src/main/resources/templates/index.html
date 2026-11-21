@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>DropLink</title>
+  <link rel="stylesheet" th:href="@{/style.css}">
+</head>
+<body data-page="home" th:attr="data-max-mb=${maxMb}">
+<main>
+  <header><a class="brand" th:href="@{/}">DropLink</a><p class="tagline">Share a file with a link that expires.</p></header>
+
+  <section id="create-card" class="card">
+    <form id="create-form" novalidate>
+      <label id="drop" class="drop" for="file">
+        <input id="file" type="file">
+        <span id="drop-text">Choose a file or drop it here</span>
+        <small th:text="'Up to ' + ${maxMb} + ' MB'">Up to 100 MB</small>
+      </label>
+
+      <div class="row">
+        <label>Expires after
+          <select name="expires" id="expires">
+            <option th:each="e : ${expiries}" th:value="${e.key}" th:text="${e.value}" th:selected="${e.key == defaultExpiry}"></option>
+          </select>
+        </label>
+        <label>Download limit <small>(empty = no limit)</small>
+          <input name="maxDownloads" id="maxDownloads" type="number" min="1" max="1000" placeholder="no limit">
+        </label>
+      </div>
+      <label>Password <small>(optional, 4 to 64 characters)</small>
+        <input name="password" id="password" type="password" autocomplete="new-password" maxlength="64">
+      </label>
+
+      <button id="create-button" type="submit">Create link</button>
+      <progress id="progress" max="1" value="0" hidden></progress>
+      <p id="create-error" class="error" role="alert" hidden></p>
+    </form>
+  </section>
+
+  <section id="result" class="card" hidden>
+    <h2>Your link is ready</h2>
+    <label>Share this link
+      <span class="copy"><input id="share-url" type="text" readonly><button type="button" id="copy-share">Copy</button></span>
+    </label>
+    <img id="qr" class="qr" alt="QR code of the link" width="160" height="160">
+    <label>Manage link <small>(see downloads, delete the link)</small>
+      <span class="copy"><input id="manage-url" type="text" readonly><button type="button" id="copy-manage">Copy</button></span>
+    </label>
+    <p class="warn">Save the manage link now. It is shown only once and cannot be recovered.</p>
+    <p><a id="open-link" href="#">Open the link</a> · <a th:href="@{/}">Share another file</a></p>
+  </section>
+</main>
+<script th:src="@{/app.js}"></script>
+</body>
+</html>

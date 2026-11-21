@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Manage link · DropLink</title>
+  <link rel="stylesheet" th:href="@{/style.css}">
+</head>
+<body data-page="manage" th:attr="data-id=${id}">
+<main>
+  <header><a class="brand" th:href="@{/}">DropLink</a></header>
+
+  <section class="card">
+    <h1>Manage link</h1>
+    <p id="manage-error" class="error" role="alert" hidden></p>
+    <div id="manage-body" hidden>
+      <p class="filename" id="m-name"></p>
+      <ul class="facts">
+        <li>Size: <span id="m-size"></span></li>
+        <li>Expires: <span id="m-expires"></span></li>
+        <li>Downloads: <span id="m-downloads"></span></li>
+        <li>Password: <span id="m-password"></span></li>
+      </ul>
+      <p><a id="m-open" href="#">Open the link</a></p>
+      <h2>Recent downloads</h2>
+      <table id="m-events"><thead><tr><th>When</th><th>From</th><th>Browser</th></tr></thead><tbody></tbody></table>
+      <p id="m-none" class="muted" hidden>Nobody has downloaded the file yet.</p>
+      <button id="m-delete" type="button" class="danger">Delete link and file now</button>
+    </div>
+  </section>
+</main>
+<script th:src="@{/app.js}"></script>
+</body>
+</html>

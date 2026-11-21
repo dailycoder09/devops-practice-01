@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title th:text="${fileName} + ' · DropLink'">File · DropLink</title>
+  <link rel="stylesheet" th:href="@{/style.css}">
+</head>
+<body data-page="link" th:attr="data-id=${id},data-unlocked=${unlocked},data-preview=${previewKind},data-expires=${expiresAt}">
+<main>
+  <header><a class="brand" th:href="@{/}">DropLink</a></header>
+
+  <section class="card">
+    <h1 class="filename" th:text="${fileName}">file.txt</h1>
+    <p class="meta">
+      <span th:text="${size}">1 MB</span> ·
+      <span id="expires-text">expires soon</span>
+      <span th:if="${downloadsLeft != null}"> · <span th:text="${downloadsLeft} + (${downloadsLeft == 1} ? ' download left' : ' downloads left')"></span></span>
+    </p>
+
+    <form id="unlock-form" th:unless="${unlocked}">
+      <label>This file is protected. Enter the password.
+        <input id="unlock-password" type="password" autocomplete="off" maxlength="64" required>
+      </label>
+      <button type="submit">Unlock</button>
+    </form>
+
+    <div id="after-unlock" th:classappend="${unlocked} ? '' : 'hidden'">
+      <div id="preview" class="preview" hidden></div>
+      <button id="download-button" type="button">Download</button>
+    </div>
+    <p id="link-error" class="error" role="alert" hidden></p>
+  </section>
+
+  <section class="card small">
+    <img class="qr" th:src="@{/d/{id}/qr(id=${id})}" alt="QR code of this link" width="120" height="120">
+    <p>Scan to open this link on your phone.</p>
+  </section>
+</main>
+<script th:src="@{/app.js}"></script>
+</body>
+</html>
