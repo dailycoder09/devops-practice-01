@@ -1,6 +1,6 @@
 # Deploy MicroShop on AWS VMs behind an Application Load Balancer
 
-You create the security groups, the database, the photo bucket, the VM, the target groups and the load balancer by hand in the console. The VM sets itself up from `deploy/aws/user-data.sh`: it installs git and Docker, clones this project from GitHub, builds the six images and runs them. The product photos come from an S3 bucket (Step 1c). Two other ways to get the images onto the VM are described at the end (optional, later).
+You create the security groups, the database, the photo bucket, the VM, the target groups and the load balancer by hand in the console. The VM sets itself up from `deploy/aws/user-data.sh`: it installs git and Docker, clones this project from GitHub, builds the six images and runs them. The product photos come from an S3 bucket (Step 1c). Two other ways to get the images onto the VM are described at the end (optional, later). **To repeat all this in each new lab session, use the short checklist [AWS-RUNBOOK.md](AWS-RUNBOOK.md).**
 
 ```
 Internet -> Application Load Balancer (port 80) -> path rule -> target group -> port on the VM
@@ -173,6 +173,44 @@ curl -s -X POST $ALB/api/users/login -H 'Content-Type: application/json' \
 
 Open `http://<the DNS name>` in a browser: browse, register, order, and log in as admin.
 
+## Step 8 (optional): Events with Lambda (new user, order placed, stock empty)
+
+The user, order and inventory services can tell a Lambda function when a **new user registers**, an **order is placed**, and a **SKU runs out**. The Lambda writes a readable message to its log and, if you give it an SNS topic, e-mails you. It is switched on only by two settings in the user data (`EVENTS_URL`, `EVENTS_SECRET`); empty means nothing is sent. A slow or broken Lambda never changes a registration or an order: the event is sent after the data is saved, on its own thread, and a failure is only logged.
+
+**a) An SNS topic for the e-mails.** SNS > Topics > Create topic > type **Standard**, name `microshop-events`. Open it, then Create subscription: protocol **Email**, your address. Open the e-mail AWS sends and click **Confirm subscription**. Copy the topic's **ARN**.
+
+**b) The Lambda function.** Lambda > Create function > Author from scratch: name `microshop-events`, runtime **Python 3.12**, architecture **x86_64**, and leave "Create a new role with basic Lambda permissions". In the code editor, replace the whole content of `lambda_function.py` with the content of [deploy/lambda/events/handler.py](deploy/lambda/events/handler.py) and click **Deploy**.
+
+**c) Its two settings.** Configuration > Environment variables > Edit:
+
+| Key | Value |
+|---|---|
+| `EVENT_SECRET` | a secret you make once, letters and digits only: in CloudShell `openssl rand -hex 24` |
+| `TOPIC_ARN` | the topic ARN from step a (leave it out to only write to the log) |
+
+**d) Let it publish to the topic.** Configuration > Permissions > click the role name > Add permissions > Create inline policy > JSON (the ARN is your topic's), name it `publish-events`:
+```json
+{ "Version": "2012-10-17", "Statement": [{ "Effect": "Allow", "Action": "sns:Publish", "Resource": "TOPIC-ARN" }] }
+```
+
+**e) The web address of the function.** Configuration > Function URL > Create function URL: auth type **NONE**, save, and copy the URL. It is public, but the function refuses every call that does not carry `EVENT_SECRET`.
+
+**f) Try it from CloudShell** (use your URL and secret). A wrong secret gives `401`, the right one `200` and an e-mail within a minute:
+```bash
+URL=PASTE-THE-FUNCTION-URL
+curl -s -o /dev/null -w "%{http_code}\n" -X POST $URL -H 'X-Event-Secret: wrong' -d '{"type":"USER_REGISTERED","data":{}}'
+curl -s -w " %{http_code}\n" -X POST $URL -H 'X-Event-Secret: YOUR-SECRET' -H 'Content-Type: application/json' \
+  -d '{"type":"USER_REGISTERED","source":"test","data":{"userId":1,"email":"test@example.com"}}'
+```
+
+**g) Switch it on in the shop.** In the user data (Step 2) set `EVENTS_URL="<the function URL>"` and `EVENTS_SECRET="<the same secret>"`. The script gives them only to the user, order and inventory containers, and stops with a message if you set the URL without the secret. On a running VM the containers keep their old settings: launch a new VM, or remove and recreate those three containers.
+
+**h) Check it in the shop.** Register a new user: the e-mail "MicroShop: new user registered" arrives. Place an order: "order #N placed". Buy the last unit of a SKU, or set its stock to 0 as admin: "out of stock". All the Lambda's lines are also in CloudWatch Logs (Lambda > Monitor > View CloudWatch logs). An order sends its events with the same trace id, so you can follow it.
+
+The e-mails go to **you** (the topic subscribers), not to the shopper. A real welcome mail to the shopper needs Amazon SES, which in a new account only sends to addresses you have verified first.
+
+To try it on your own computer without AWS: `cd deploy/lambda/events && EVENT_SECRET=localsecret python3 local_server.py 9099`, then start the services with `EVENTS_URL=http://localhost:9099/` and `EVENTS_SECRET=localsecret`. The tests of the function: `python3 -m unittest -v test_handler` in the same folder.
+
 ## If something is wrong
 
 | Symptom | Check |
@@ -187,11 +225,12 @@ Open `http://<the DNS name>` in a browser: browse, register, order, and log in a
 | `password authentication failed` in a service log | `DB_PASSWORD` in the user data is wrong. |
 | "Your session has ended" right after login | The VMs do not all have the same `JWT_SECRET`, or `DB_HOST` is empty so each VM has its own data. |
 | A container keeps restarting / out of memory | Use `t3.medium` or bigger. `free -m`. |
+| No e-mail after a registration or an order (Step 8) | 1) Did you click Confirm in the SNS e-mail? 2) Lambda > Monitor > CloudWatch logs: no `EVENT` line means the service never reached the Lambda (`EVENTS_URL` wrong, or the VM was started without it; check `sudo docker logs user-service` for `Event ... was not sent`); `Refused a call` means the two secrets differ; `SNS publish failed` means the role lacks `sns:Publish` or `TOPIC_ARN` is wrong. |
 | Photos do not show | Open one photo address in a browser. **403**: the bucket policy or "Block public access" (Step 1c a and b). **404**: the files are not at `products/<folder>/<n>.jpg` in the bucket (Step 1c c). It shows a local `/photos/...` address, or the ui has no photos: `PHOTOS_URL` was empty or the database already existed (Step 1c e). |
 
 ## Tear down
 
-Delete the load balancer, the six target groups, terminate the VMs, delete the database `microshopdb1` (no final snapshot), empty and delete the photo bucket, then delete `microshop-db-sg`, `microshop-vm-sg` and `microshop-alb-sg`.
+Delete the load balancer, the six target groups, terminate the VMs, delete the database `microshopdb1` (no final snapshot), empty and delete the photo bucket, delete the Lambda function `microshop-events` and the SNS topic (if you did Step 8), then delete `microshop-db-sg`, `microshop-vm-sg` and `microshop-alb-sg`.
 
 ## Good to know
 

@@ -18,10 +18,15 @@ DB_USER="microshop"
 DB_PASSWORD=""       # the RDS master password
 JWT_SECRET=""        # with RDS: the SAME value on every VM. Make one:  openssl rand -base64 48
 ADMIN_PASSWORD=""    # with RDS: the SAME value on every VM
+EVENTS_URL=""        # the Lambda function URL that gets the events (DEPLOY-AWS.md, Step 8). Empty = no events are sent.
+EVENTS_SECRET=""     # the same value as EVENT_SECRET on the Lambda function. Must be set when EVENTS_URL is set.
 
 if [ -n "$DB_HOST" ]; then
   [ -n "$DB_PASSWORD" ] && [ -n "$JWT_SECRET" ] && [ -n "$ADMIN_PASSWORD" ] || {
     echo "STOP: with DB_HOST set, DB_PASSWORD, JWT_SECRET and ADMIN_PASSWORD must be filled in (the same on every VM)."; exit 1; }
+fi
+if [ -n "$EVENTS_URL" ] && [ -z "$EVENTS_SECRET" ]; then
+  echo "STOP: with EVENTS_URL set, EVENTS_SECRET must be filled in (the same value as EVENT_SECRET on the Lambda)."; exit 1
 fi
 [ -n "$JWT_SECRET" ] || JWT_SECRET=$(head -c 48 /dev/urandom | base64 | tr -d '\n')
 [ -n "$ADMIN_PASSWORD" ] || ADMIN_PASSWORD=$(head -c 24 /dev/urandom | base64 | tr -d '+/=\n' | cut -c1-20)
@@ -42,10 +47,12 @@ for s in product inventory user cart order; do
   fi
   ADMIN_ENV=()
   [ "$s" = user ] && ADMIN_ENV=(-e "ADMIN_EMAIL=$ADMIN_EMAIL" -e "ADMIN_PASSWORD=$ADMIN_PASSWORD")
+  EVENTS_ENV=()      # only the services that send events get the two settings
+  case "$s" in user|order|inventory) [ -z "$EVENTS_URL" ] || EVENTS_ENV=(-e "EVENTS_URL=$EVENTS_URL" -e "EVENTS_SECRET=$EVENTS_SECRET");; esac
   docker build -t "$s-service" "$s-service"
   docker run -d --name "$s-service" --restart unless-stopped --network host \
     --log-opt max-size=10m --log-opt max-file=3 \
-    "${DB_ENV[@]}" "${ADMIN_ENV[@]}" -e JWT_SECRET="$JWT_SECRET" \
+    "${DB_ENV[@]}" "${ADMIN_ENV[@]}" "${EVENTS_ENV[@]}" -e JWT_SECRET="$JWT_SECRET" \
     -e JAVA_OPTS="-Xms128m -Xmx320m" -e "IMAGE_BASE_URL=${PHOTOS_URL:-/photos}" \
     "$s-service"
 done

@@ -14,6 +14,8 @@ import com.microservices.order.exception.OrderRejectedException;
 import com.microservices.order.exception.ProductNotAvailableException;
 import com.microservices.order.exception.StockRefusedException;
 import com.microservices.order.exception.StockServiceException;
+import com.microservices.order.events.AfterCommit;
+import com.microservices.order.events.EventPublisher;
 import com.microservices.order.logging.AuditLog;
 import com.microservices.order.logging.LogSanitizer;
 import com.microservices.order.mapper.OrderMapper;
@@ -23,6 +25,7 @@ import com.microservices.order.service.OrderService;
 import com.microservices.order.service.OrderStore;
 import com.microservices.order.service.PricedLine;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -92,6 +95,14 @@ public class OrderServiceImpl implements OrderService {
         this.orderStore = orderStore;
     }
 
+    /** Where events go (a Lambda function). Nothing is sent when the service is built without Spring or EVENTS_URL is empty. */
+    private EventPublisher events = EventPublisher.NONE;
+
+    @Autowired(required = false)
+    public void setEventPublisher(EventPublisher events) {
+        this.events = events == null ? EventPublisher.NONE : events;
+    }
+
     @Override
     public OrderResponse placeOrder(Caller caller) {
         // Steps 1 and 2: read the cart and the prices. Nothing is saved yet.
@@ -143,6 +154,16 @@ public class OrderServiceImpl implements OrderService {
         AuditLog.event("order_confirmed", "Order confirmed",
                 kv("orderId", orderId), kv("total", confirmed.getTotal()), kv("itemCount", lines.size()),
                 kv("cartCleared", cartCleared));
+
+        // Tell the outside (a Lambda) that the order was placed. It is saved and CONFIRMED; nothing here can change that.
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("orderId", orderId);
+        event.put("userId", caller.userId());
+        event.put("email", caller.email());
+        event.put("total", confirmed.getTotal());
+        event.put("itemCount", lines.size());
+        event.put("status", OrderStatus.CONFIRMED.name());
+        AfterCommit.run(() -> events.publish("ORDER_PLACED", event));
         return confirmed.toBuilder().cartCleared(cartCleared).build();
     }
 

@@ -137,6 +137,12 @@ application:
 
 # Security settings. The secret and the admin account come from environment variables.
 # Outside the dev profile the service refuses to start if they are missing (see StartupSecurityCheck).
+# Events: where to tell that something happened (an AWS Lambda function URL). Both values come from outside
+# (the user data of the VM). Empty EVENTS_URL = nothing is sent. EVENTS_SECRET must be set when EVENTS_URL is set.
+events:
+  url: ${EVENTS_URL:}
+  secret: ${EVENTS_SECRET:}
+
 app:
   # An email is personal data: set include-email to false to keep it out of the logs.
   # A request slower than slow-request-ms is logged as a warning with slow=true.

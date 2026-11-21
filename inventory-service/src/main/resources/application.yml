@@ -135,6 +135,12 @@ application:
 # JWT security: user-service signs the login tokens, this service only checks them.
 # All services share one secret (environment variable JWT_SECRET, at least 32 bytes). Never commit a real secret.
 # Outside the dev profile the service refuses to start when JWT_SECRET is missing or is the dev placeholder.
+# Events: where to tell that something happened (an AWS Lambda function URL). Both values come from outside
+# (the user data of the VM). Empty EVENTS_URL = nothing is sent. EVENTS_SECRET must be set when EVENTS_URL is set.
+events:
+  url: ${EVENTS_URL:}
+  secret: ${EVENTS_SECRET:}
+
 app:
   logging:
     # false = the user's email is left out of the logs (it is personal data); the user id and role stay

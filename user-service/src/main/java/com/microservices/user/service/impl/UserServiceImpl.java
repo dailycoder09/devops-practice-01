@@ -5,6 +5,8 @@ import com.microservices.user.dto.request.RegisterRequest;
 import com.microservices.user.dto.response.LoginResponse;
 import com.microservices.user.dto.response.UserResponse;
 import com.microservices.user.dto.response.UserSummaryResponse;
+import com.microservices.user.events.AfterCommit;
+import com.microservices.user.events.EventPublisher;
 import com.microservices.user.exception.DuplicateEmailException;
 import com.microservices.user.exception.InvalidCredentialsException;
 import com.microservices.user.exception.UserNotFoundException;
@@ -31,8 +33,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 import static net.logstash.logback.argument.StructuredArguments.kv;
@@ -79,6 +83,14 @@ public class UserServiceImpl implements UserService {
         this.loggingProperties = loggingProperties;
     }
 
+    /** Where events go (a Lambda function). Nothing is sent when the service is built without Spring or EVENTS_URL is empty. */
+    private EventPublisher events = EventPublisher.NONE;
+
+    @Autowired(required = false)
+    public void setEventPublisher(EventPublisher events) {
+        this.events = events == null ? EventPublisher.NONE : events;
+    }
+
     /**
      * Emails are compared and stored in lower case.
      */
@@ -109,6 +121,13 @@ public class UserServiceImpl implements UserService {
 
         AuditLog.event("user_registered", "User registered",
                 fields(kv("newUserId", user.getId()), emailField(email)));
+
+        // Tell the outside (a Lambda) once the user is really saved. Never the password or the hash.
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("userId", user.getId());
+        event.put("email", email);
+        event.put("role", user.getRole().name());
+        AfterCommit.run(() -> events.publish("USER_REGISTERED", event));
         return userMapper.toResponse(user);
     }
 

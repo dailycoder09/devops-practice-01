@@ -15,6 +15,8 @@
 *.key
 application-local.yml
 application-local.properties
+# Your own filled-in copy of a user data script (it holds passwords): name it like  deploy/aws/my-user-data.local.sh
+*.local.sh
 
 # Local run output (created when the apps run on this machine)
 logs/

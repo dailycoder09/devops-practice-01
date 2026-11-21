@@ -9,6 +9,8 @@ import com.microservices.inventory.exception.InsufficientStockException;
 import com.microservices.inventory.exception.InventoryNotFoundException;
 import com.microservices.inventory.exception.ReservationConflictException;
 import com.microservices.inventory.exception.SkuNotFoundInCatalogException;
+import com.microservices.inventory.events.AfterCommit;
+import com.microservices.inventory.events.EventPublisher;
 import com.microservices.inventory.logging.AuditLog;
 import com.microservices.inventory.logging.LogSanitizer;
 import com.microservices.inventory.mapper.InventoryMapper;
@@ -23,6 +25,7 @@ import com.microservices.inventory.repository.StockReservationRepository;
 import com.microservices.inventory.service.InventoryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -31,6 +34,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -66,6 +70,28 @@ public class InventoryServiceImpl implements InventoryService {
 
     /** Most units one reserve may take (the contract: 1 to 999) */
     private static final int MAX_RESERVE_QUANTITY = 999;
+
+    /** Where events go (a Lambda function). Nothing is sent when the service is built without Spring or EVENTS_URL is empty. */
+    private EventPublisher events = EventPublisher.NONE;
+
+    @Autowired(required = false)
+    public void setEventPublisher(EventPublisher events) {
+        this.events = events == null ? EventPublisher.NONE : events;
+    }
+
+    /**
+     * Tell the outside (a Lambda) that a SKU just ran out. Called only when the quantity went from above zero to
+     * zero in this change, so a SKU that stays at zero does not send it again. Sent after the commit.
+     */
+    private void stockEmpty(String skuCode, String reason, Long orderId) {
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("sku", skuCode);
+        event.put("reason", reason);
+        if (orderId != null) {
+            event.put("orderId", orderId);
+        }
+        AfterCommit.run(() -> events.publish("STOCK_EMPTY", event));
+    }
 
     /**
      * Create a new inventory record
@@ -163,6 +189,10 @@ public class InventoryServiceImpl implements InventoryService {
                 v("sku", LogSanitizer.clean(updatedItem.getSkuCode())), v("before", previousQuantity),
                 v("after", updatedItem.getQuantityOnHand()));
 
+        if (updatedItem.getQuantityOnHand() == 0 && previousQuantity != null && previousQuantity > 0) {
+            stockEmpty(updatedItem.getSkuCode(), "updated", null);
+        }
+
         return inventoryMapper.toResponse(updatedItem);
     }
 
@@ -192,6 +222,10 @@ public class InventoryServiceImpl implements InventoryService {
         AuditLog.event("stock_adjusted", "Stock of SKU {} adjusted by {}: {} -> {}",
                 v("sku", LogSanitizer.clean(skuCode)), v("delta", delta), v("before", previousQuantity),
                 v("after", newQuantity));
+
+        if (newQuantity == 0 && previousQuantity > 0) {
+            stockEmpty(skuCode, "adjusted", null);
+        }
 
         return inventoryMapper.toResponse(savedItem);
     }
@@ -270,6 +304,11 @@ public class InventoryServiceImpl implements InventoryService {
         AuditLog.event("stock_reserved", "Reserved {} unit(s) of SKU {} for order {}, {} left",
                 v("quantity", quantity), v("sku", LogSanitizer.clean(skuCode)), v("orderId", orderId),
                 v("after", updated.getQuantityOnHand()));
+
+        if (updated.getQuantityOnHand() == 0) {
+            // Our UPDATE took the units, so a result of zero means this reserve is the one that emptied the SKU.
+            stockEmpty(skuCode, "reserved", orderId);
+        }
 
         return inventoryMapper.toResponse(updated);
     }

@@ -150,6 +150,12 @@ order:
 
 # Security settings. The secret comes from an environment variable.
 # Outside the dev profile the service refuses to start if it is missing (see JwtStartupCheck).
+# Events: where to tell that something happened (an AWS Lambda function URL). Both values come from outside
+# (the user data of the VM). Empty EVENTS_URL = nothing is sent. EVENTS_SECRET must be set when EVENTS_URL is set.
+events:
+  url: ${EVENTS_URL:}
+  secret: ${EVENTS_SECRET:}
+
 app:
   security:
     jwt:
