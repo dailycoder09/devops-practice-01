@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars (that file is ignored by git) and fill in your values.
+
+domain_name = "example.com"          # your domain
+subdomain   = "droplink"             # the app will be at droplink.example.com
+
+# Who may open the app on port 80. Your own IP is safest: find it with  curl -s https://checkip.amazonaws.com
+# (the Route 53 health checkers are allowed automatically, so failover still works)
+allowed_cidrs = ["203.0.113.7/32"]
+
+notify_email = ""                    # optional: e-mail for "file downloaded"
+
+# true  = a new hosted zone is created: set its name servers at your registrar (see the output)
+# false = a hosted zone for this domain already exists in this account
+create_hosted_zone = true

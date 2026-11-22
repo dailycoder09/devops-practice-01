@@ -124,7 +124,7 @@ The instance gets its permissions from a **role** (no keys anywhere). `deploy/ia
 
 | Placeholder | Replace with |
 |---|---|
-| `BUCKET` (twice) | the bucket name only, no `s3://` (example `droplink-yourname-12345`) |
+| `BUCKET` (every place) | the bucket name only, no `s3://` (example `droplink-yourname-12345`) |
 | `TABLE_ARN` | the full table ARN from Step 2 |
 | `TOPIC_ARN` | the full topic ARN from Step 3 |
 

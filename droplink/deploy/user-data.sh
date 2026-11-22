@@ -4,17 +4,18 @@
 # The instance needs the IAM instance profile from docs/AWS-SETUP.md (Step 4): it lets it read the jar and use S3, DynamoDB and SNS.
 # Watch it:  sudo tail -f /var/log/user-data.log        After it: sudo journalctl -u droplink -f
 # Fill in the values ONLY in the copy you paste into the console, never in the file on GitHub.
+# (Terraform sets the same six names before this file, so the lines below keep the value that is already set.)
 # Use only letters and digits in SECRET (make one:  openssl rand -hex 32). No spaces, quotes or $ in any value.
 set -eo pipefail
 touch /var/log/user-data.log && chmod 600 /var/log/user-data.log   # root only
 exec > >(tee -a /var/log/user-data.log) 2>&1
 
-BUCKET=""                    # the private S3 bucket, for example droplink-yourname-12345
-TABLE=""                     # the DynamoDB table name, for example droplink
-TOPIC_ARN=""                 # optional: the SNS topic ARN (e-mail on download). Empty = no e-mail.
-SECRET=""                    # the SAME value on every instance. It signs the cookie of password-protected links.
-JAR="droplink-latest.jar"    # the file in s3://BUCKET/releases/ (or droplink-<commit>.jar for a fixed version)
-PUBLIC_URL=""                # optional: the public address, for example http://1.2.3.4:8080 (no slash at the end)
+BUCKET="${BUCKET:-}"                      # the private S3 bucket, for example droplink-yourname-12345
+TABLE="${TABLE:-}"                        # the DynamoDB table name, for example droplink
+TOPIC_ARN="${TOPIC_ARN:-}"                # optional: the SNS topic ARN (e-mail on download). Empty = no e-mail.
+SECRET="${SECRET:-}"                      # the SAME value on every instance. It signs the cookie of password-protected links.
+JAR="${JAR:-droplink-latest.jar}"        # the file in s3://BUCKET/releases/ (or droplink-<commit>.jar for a fixed version)
+PUBLIC_URL="${PUBLIC_URL:-}"                # optional: the public address, for example http://1.2.3.4:8080 (no slash at the end)
 
 # ---- Guards: stop early, with a clear message ----
 if [ -z "$BUCKET" ] || [ -z "$TABLE" ] || [ -z "$SECRET" ]; then

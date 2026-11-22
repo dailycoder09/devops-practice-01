@@ -1,0 +1,35 @@
+terraform {
+  required_version = ">= 1.5"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.40"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.12"
+    }
+  }
+}
+
+# Two regions. Everything global (IAM, Route 53, the DynamoDB global table, S3 replication) is created through the primary provider.
+provider "aws" {
+  alias  = "primary"
+  region = var.primary_region
+  default_tags {
+    tags = { Project = "droplink", ManagedBy = "terraform" }
+  }
+}
+
+provider "aws" {
+  alias  = "secondary"
+  region = var.secondary_region
+  default_tags {
+    tags = { Project = "droplink", ManagedBy = "terraform" }
+  }
+}

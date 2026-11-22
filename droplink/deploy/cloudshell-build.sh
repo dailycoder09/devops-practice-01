@@ -1,6 +1,7 @@
 #!/bin/bash
 # DropLink: build the jar in AWS CloudShell and upload it to your S3 bucket.
 # Run it in CloudShell (same region as the bucket):   BUCKET=your-bucket-name bash droplink/deploy/cloudshell-build.sh
+# Only build the jar to a file (for terraform):        OUT=$PWD/droplink.jar bash ../deploy/cloudshell-build.sh
 # It installs Maven 3.9.6 into $HOME/tools if missing, clones the repo (shallow) into a temporary folder,
 # builds droplink/target/droplink-1.0.0.jar and copies it to
 #   s3://BUCKET/releases/droplink-<short commit>.jar   and   s3://BUCKET/releases/droplink-latest.jar
@@ -8,25 +9,30 @@
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/dailycoder09/devops-practice-01.git}"   # must be a public repo
-BUCKET="${BUCKET:-}"          # the DropLink bucket (required). Set it here or on the command line.
+BUCKET="${BUCKET:-}"          # the DropLink bucket (required, unless OUT is set). Set it here or on the command line.
+OUT="${OUT:-}"                # optional: only build, and copy the jar to this file (used by terraform/). No bucket, no upload.
 MAVEN_VERSION="3.9.6"
 MAVEN_URL="https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
 MAVEN_MIN_BYTES=5000000       # the real archive is about 9 MB; anything under 5 MB is a failed or partial download
 TOOLS_DIR="$HOME/tools"
 
-if [ -z "$BUCKET" ]; then
+if [ -z "$BUCKET" ] && [ -z "$OUT" ]; then
   echo "STOP: BUCKET is empty. Run:  BUCKET=your-bucket-name bash $0   (or write the name at the top of this script)."
   exit 1
 fi
 
-for c in aws git java curl tar; do
+REQUIRED="git java curl tar"
+[ -n "$OUT" ] || REQUIRED="aws $REQUIRED"
+for c in $REQUIRED; do
   command -v "$c" >/dev/null 2>&1 || { echo "STOP: '$c' was not found. This script is meant for AWS CloudShell."; exit 1; }
 done
 echo "== Java in use: $(java -version 2>&1 | head -1)"
 
-echo "== Checking that the bucket '$BUCKET' exists and you can reach it"
-aws s3api head-bucket --bucket "$BUCKET" >/dev/null 2>&1 || {
-  echo "STOP: cannot reach the bucket '$BUCKET'. Check the name, and that CloudShell is in the bucket's region."; exit 1; }
+if [ -z "$OUT" ]; then
+  echo "== Checking that the bucket '$BUCKET' exists and you can reach it"
+  aws s3api head-bucket --bucket "$BUCKET" >/dev/null 2>&1 || {
+    echo "STOP: cannot reach the bucket '$BUCKET'. Check the name, and that CloudShell is in the bucket's region."; exit 1; }
+fi
 
 # ---- Maven ----
 MVN_HOME="$TOOLS_DIR/apache-maven-$MAVEN_VERSION"
@@ -63,6 +69,13 @@ echo "== Building (the first run downloads the dependencies: a few minutes)"
 JAR="$WORK/src/droplink/target/droplink-1.0.0.jar"
 [ -s "$JAR" ] || { echo "STOP: the build finished but $JAR does not exist."; exit 1; }
 JAR_BYTES=$(wc -c < "$JAR" | tr -d ' ')
+
+# ---- Only a file wanted (terraform uploads it itself) ----
+if [ -n "$OUT" ]; then
+  cp "$JAR" "$OUT" || { echo "STOP: could not copy the jar to $OUT."; exit 1; }
+  echo "DONE: the jar ($((JAR_BYTES / 1024 / 1024)) MB, commit $COMMIT) is at $OUT"
+  exit 0
+fi
 
 # ---- Upload ----
 VERSIONED="s3://$BUCKET/releases/droplink-$COMMIT.jar"

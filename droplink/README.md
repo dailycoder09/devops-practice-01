@@ -29,6 +29,10 @@ Files go to `./droplink-data`, links live in memory (gone when you stop the app)
 
 The app keeps nothing on its own disk in aws mode, so any number of copies can run behind a load balancer (next stage).
 
+### Two regions with failover (Terraform)
+
+[terraform/](terraform/README.md) builds the whole thing from nothing: network, servers behind a load balancer, storage and data copy, in two regions, with Route 53 failover on your domain. Run it again in every new sandbox.
+
 ## How the safety works
 
 - The link id (12 random characters) is the secret. It is never written to the log in full and never put in an SNS message.
