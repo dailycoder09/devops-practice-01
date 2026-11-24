@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EdgeLab: a CloudFront practice site</title>
+  <link rel="stylesheet" href="/assets/app.v1.css">
+</head>
+<body>
+<header>
+  <h1>EdgeLab</h1>
+  <p>A small site for practising Amazon CloudFront. <strong id="version">Version 1</strong></p>
+  <nav><a href="/">Home</a> · <a href="/about.html">About</a></nav>
+</header>
+
+<main>
+  <section>
+    <h2>Pictures</h2>
+    <p>Three photos from S3. Look at their <code>X-Cache</code> and <code>Age</code> with the inspector below.</p>
+    <div class="gallery">
+      <img src="/images/photo-1.jpg" alt="Toy train, photo 1" width="220">
+      <img src="/images/photo-2.jpg" alt="Toy train, photo 2" width="220">
+      <img src="/images/photo-3.jpg" alt="Furniture, photo 3" width="220">
+    </div>
+  </section>
+
+  <section>
+    <h2>Cache inspector</h2>
+    <p>Asks CloudFront for a path (the browser's own cache is switched off) and shows what CloudFront says about it.</p>
+    <form id="inspect-form">
+      <input id="inspect-path" type="text" value="/index.html" aria-label="Path to inspect">
+      <button type="submit">Inspect</button>
+    </form>
+    <table id="inspect-result" hidden>
+      <tbody></tbody>
+    </table>
+    <p id="inspect-error" class="error" hidden></p>
+  </section>
+
+  <section>
+    <h2>API (from Lab 2)</h2>
+    <p>Calls <code>/api/time</code>. Until Lab 2 is done this shows an error: that is expected.</p>
+    <form id="api-form">
+      <label>Cache it for <input id="api-ttl" type="number" min="0" max="300" value="0"> seconds (the API sends <code>Cache-Control: max-age</code>)</label>
+      <button type="submit">Call API</button>
+    </form>
+    <pre id="api-result" hidden></pre>
+  </section>
+
+  <section>
+    <h2>Big file</h2>
+    <p><a href="/data/big.json">/data/big.json</a> is about 400 KB of text. Inspect it to see compression (Lab 3).</p>
+  </section>
+</main>
+
+<footer><small>Page opened at <span id="opened"></span>. Photo credits: <a href="/images/CREDITS.md">CREDITS</a>.</small></footer>
+<script src="/assets/app.v1.js"></script>
+</body>
+</html>

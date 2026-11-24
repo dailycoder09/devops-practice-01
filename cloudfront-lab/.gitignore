@@ -1,0 +1,2 @@
+# The root .gitignore ignores every folder called data/ (local database files). This one is the lab's sample website folder: keep it.
+!site/data/

@@ -1,0 +1,4 @@
+# Copy to terraform.tfvars (ignored by git) only if you want to change something. Everything has a default.
+region                = "us-west-2"
+name_prefix           = "cf-lab"
+enable_edge_functions = true
