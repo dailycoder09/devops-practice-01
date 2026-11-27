@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars (ignored by git) only if you want to change something. Everything has a default.
+region           = "us-west-2"
+name_prefix      = "photowall"
+list_ttl_seconds = 30
+
+# Your own address (Phase 5). Empty = only the cloudfront.net address.
+domain_name        = ""                      # for example "photowall.shaikhirfan.com"
+create_hosted_zone = true
+
+# A WAF rate limit on the likes. Costs money outside a sandbox.
+enable_waf = false
+
+# upload_key = "my-secret-word"              # empty = Terraform makes one

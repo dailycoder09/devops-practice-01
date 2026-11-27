@@ -1,0 +1,68 @@
+{
+ "photos": [
+  {
+   "id": "sample01",
+   "title": "Smartphone",
+   "likes": 0,
+   "created_at": "2026-11-01T10:00:00Z",
+   "photo": "/photos/sample01.jpg",
+   "thumb": "/thumbs/sample01.jpg"
+  },
+  {
+   "id": "sample02",
+   "title": "E-reader",
+   "likes": 0,
+   "created_at": "2026-11-02T10:00:00Z",
+   "photo": "/photos/sample02.jpg",
+   "thumb": "/thumbs/sample02.jpg"
+  },
+  {
+   "id": "sample03",
+   "title": "Router",
+   "likes": 0,
+   "created_at": "2026-11-03T10:00:00Z",
+   "photo": "/photos/sample03.jpg",
+   "thumb": "/thumbs/sample03.jpg"
+  },
+  {
+   "id": "sample04",
+   "title": "Stand mixer",
+   "likes": 0,
+   "created_at": "2026-11-04T10:00:00Z",
+   "photo": "/photos/sample04.jpg",
+   "thumb": "/thumbs/sample04.jpg"
+  },
+  {
+   "id": "sample05",
+   "title": "Winter jacket",
+   "likes": 0,
+   "created_at": "2026-11-05T10:00:00Z",
+   "photo": "/photos/sample05.jpg",
+   "thumb": "/thumbs/sample05.jpg"
+  },
+  {
+   "id": "sample06",
+   "title": "Humidifier",
+   "likes": 0,
+   "created_at": "2026-11-06T10:00:00Z",
+   "photo": "/photos/sample06.jpg",
+   "thumb": "/thumbs/sample06.jpg"
+  },
+  {
+   "id": "sample07",
+   "title": "Gaming mouse",
+   "likes": 0,
+   "created_at": "2026-11-07T10:00:00Z",
+   "photo": "/photos/sample07.jpg",
+   "thumb": "/thumbs/sample07.jpg"
+  },
+  {
+   "id": "sample08",
+   "title": "Microwave oven",
+   "likes": 0,
+   "created_at": "2026-11-08T10:00:00Z",
+   "photo": "/photos/sample08.jpg",
+   "thumb": "/thumbs/sample08.jpg"
+  }
+ ]
+}

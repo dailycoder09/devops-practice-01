@@ -36,6 +36,8 @@ A **Hit** is fast and never touches your origin. A **Miss** is slower and does. 
 | **Invalidation** | "Forget these paths now." It works across all edge locations and takes a minute or two. |
 | **OAC** (origin access control) | Lets CloudFront read a **private** S3 bucket by signing its requests. The bucket policy says "only this distribution". |
 
+Next, read [the three policies as a story](policies-explained.md): it makes the cache policy, the origin request policy and the response headers policy easy to tell apart.
+
 ## Three facts that explain most surprises
 
 1. **The cache key is the path as the viewer wrote it.** `/` and `/index.html` are two different cache entries, even if S3 returns the same file.

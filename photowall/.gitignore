@@ -1,0 +1,2 @@
+# The root .gitignore ignores every folder called data/. This one holds the sample list of the site: keep it.
+!site/data/
